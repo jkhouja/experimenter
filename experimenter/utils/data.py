@@ -10,6 +10,7 @@ class DataProvider(object):
     def __init__(self, config):
         self.args = config['processor']['params']
         self.batch_size = self.args['batch_size']
+        assert self.batch_size > 2
         self.shuffle = self.args['shuffle']
         self.drop_last = self.args['drop_last']
         self.seq_len = self.args['seq_len']
@@ -17,41 +18,84 @@ class DataProvider(object):
         
 
     def _to_batches(self, data):
-        as_data = ListDataset(data, lims=self.seq_len)
+        as_data = DictDataset(data, lims=self.seq_len)
         return torch.utils.data.DataLoader(dataset=as_data, batch_size=self.batch_size, drop_last=False, shuffle=self.shuffle)
+
+    #Inefficient, needs to reimplement
+    def _from_batch(self, minibatch):
+        b_size = minibatch[list(minibatch.keys())[0]][0].shape[0]
+        res = []
+        for i in range(b_size):
+            res.append(dict())
+        for key in minibatch.keys():
+            for feat in minibatch[key]:
+                for i in range(b_size): #batch-size:
+                    try:
+                        res[i][key].append(feat[i].tolist())
+                    except:
+                        res[i][key] = [feat[i].tolist()]
+
+        return res
+
+
 
     def get_data(self):
         return self.data
+
+    def encode(self, raw_data):
+        
+        res = dict()
+        for key in raw_data.keys():
+            res[key] = []
+            for i, feat in enumerate(raw_data[key]):
+                res[key].append(self.encoder[key][i](feat, list_input=False))
+
+        return res
+            
+
+    @U.list_applyer   
+    def decode(self, model_output):
+        res = dict()
+        for key in model_output.keys():
+            res[key] = []
+            for i, feat in enumerate(model_output[key]):
+                res[key].append(self.decoder[key][i](feat, list_input=False))
+
+        return res
     
     def _create_splits(self, data, splits=None):
         # Create splits (train, dev, test, etc. ) and Shuffle if indicated
         if not splits:
             splits = self.splits
 
-        num_total = sum(splits)
-        num_splits = len(splits)
-        
-        if num_total == 1: #dealing with fractions
-            num_total = len(data)
-            splits = [int(s*num_total) for s in splits]
-        
-        assert num_total > 10
-        
-        
-        if self.shuffle:
-          indices = random.sample(range(num_total), num_total)
+        if splits is None:
+            return ([data])
         else:
-          indices = range(num_total)
-        
-        
-        
-        data_splits = [None] * num_splits
-        start_indx = 0
-        for split_index in range(num_splits):
-            data_splits[split_index] = [data[i] for i in indices[start_indx:start_indx + splits[split_index]]]
-            start_indx += splits[split_index]
+            print("Will create train, dev, test(s) splits")
+            num_total = sum(splits)
+            num_splits = len(splits)
             
-        return tuple(data_splits)
+            if num_total == 1: #dealing with fractions
+                num_total = len(data)
+                splits = [int(s*num_total) for s in splits]
+            
+            assert num_total > 10
+            
+            
+            if self.shuffle:
+              indices = random.sample(range(num_total), num_total)
+            else:
+              indices = range(num_total)
+            
+            
+            
+            data_splits = [None] * num_splits
+            start_indx = 0
+            for split_index in range(num_splits):
+                data_splits[split_index] = [data[i] for i in indices[start_indx:start_indx + splits[split_index]]]
+                start_indx += splits[split_index]
+                
+            return tuple(data_splits)
 
     def batch(func):
         def decorator(*args, as_batches=False, **kwargs):
@@ -68,6 +112,55 @@ class DataProvider(object):
     def __call__(self, raw_data, **kwargs):
        return self.encode(raw_data, **kwargs)
 
+class LMProvider(DataProvider):
+    def __init__(self, config):
+        super(LMProvider, self).__init__(config) 
+        # Setup encoding pipeline
+        cleaner = text.clean_text()
+        char_tokenizer = text.tokenizer(sep='')
+        word_tokenizer = text.tokenizer(sep=' ')
+
+        enc = text.encoder(update_vocab=True, no_special_chars=False)
+        #label_enc = text.encoder(update_vocab=True, no_special_chars=True)
+
+        self.encoder = {}
+        self.encoder['inp'] = [U.chainer(funcs=[cleaner, char_tokenizer, enc])]
+        self.encoder['label'] = self.encoder['inp']
+        self.encoder['pred'] = self.encoder['inp']
+        self.encoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
+        self.encoder['out'] = self.encoder['mask']
+        self.encoder['meta'] = self.encoder['mask']
+
+        self.decoder = {}
+        self.decoder['inp'] = [U.chainer(funcs=[enc.decode, char_tokenizer.detokenize])]
+        self.decoder['label'] = self.decoder['inp']
+        self.decoder['pred'] = self.decoder['inp']
+        self.decoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
+        self.decoder['out'] = self.decoder['mask']
+        self.decoder['meta'] = self.encoder['mask']
+
+
+        # Process data
+        raw_data = self.upload_data()
+        s = self.__call__(raw_data, list_input=True)
+        self.sample_data = raw_data[12]
+        config['processor']['params']['vocab_size'] = len(enc.vocab) #Needs changing, we might have multiple vocabs
+        d = self._create_splits(s)
+        self.data_raw = d
+        self.data = tuple([self._to_batches(split) for split in d])
+
+    def upload_data(self,  **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:
+        """Task is binary classification of stance between pair of sentences"""
+        data_in = pd.read_csv(self.args['input_path']) 
+        data_in['stance'] = data_in['stance'].astype(str)
+
+        f = lambda x: "S" + x + "E"
+        s1_data = [f(x) for x in data_in['s1']]
+        s2_data = [f(x) for x in data_in['s2']]
+
+        data = [{'inp':[d[:-2]], 'label':[d[1:]], 'mask':[1]} for d, d2 in zip(s1_data, s2_data)]
+
+        return data
 
 class PairStanceProvider(DataProvider):
     def __init__(self, config):
@@ -80,84 +173,45 @@ class PairStanceProvider(DataProvider):
         enc = text.encoder(update_vocab=True, no_special_chars=False)
         label_enc = text.encoder(update_vocab=True, no_special_chars=True)
 
-        self.inp_encoder = U.chainer(funcs=[cleaner, char_tokenizer, enc])
-        self.label_encoder = U.chainer(funcs=[label_enc])
-        self.label_decoder = U.chainer(funcs=[label_enc.decode])
+        self.encoder = {}
+        self.encoder['inp'] = [U.chainer(funcs=[cleaner, char_tokenizer, enc]), U.chainer(funcs=[cleaner, char_tokenizer, enc])]
+        self.encoder['label'] = [U.chainer(funcs=[label_enc])]
+        self.encoder['pred'] = [U.chainer(funcs=[label_enc])]
+        self.encoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
+        self.encoder['out'] = self.encoder['mask']
+        self.encoder['meta'] = self.encoder['mask']
 
-        # Setup decoding pipeline
-        self.decoder = U.chainer(funcs=[enc.decode, char_tokenizer.detokenize])
+        self.decoder = {}
+        self.decoder['inp'] = [U.chainer(funcs=[enc.decode, char_tokenizer.detokenize]), U.chainer(funcs=[enc.decode, char_tokenizer.detokenize])]
+        self.decoder['label'] = [U.chainer(funcs=[label_enc.decode])]
+        self.decoder['pred'] = [U.chainer(funcs=[label_enc.decode])]
+        self.decoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
+        self.decoder['out'] = self.decoder['mask']
+        self.decoder['meta'] = self.encoder['mask']
 
-        # Load data
-        #raw_data = [["hi_there man_", "test this"]] * 20
-        raw_data = pd.read_csv(self.args['input_path']) 
-        raw_data['stance'] = raw_data['stance'].astype(str)
-        
+
         # Process data
-        raw_data = self.convert_to_list(raw_data)
-        s = self.__call__(raw_data, list_input=True, data_type="full")
+        raw_data = self.upload_data()
+        s = self.__call__(raw_data, list_input=True)
         self.sample_data = raw_data[12]
         config['processor']['params']['vocab_size'] = len(enc.vocab) #Needs changing, we might have multiple vocabs
-        
-        if self.splits:
-            print("Will create train, dev, test(s) splits")
-            d = self._create_splits(s)
-        else:
-            d = ([s])
+        d = self._create_splits(s)
+        self.data_raw = d
         self.data = tuple([self._to_batches(split) for split in d])
 
-    def convert_to_list(self, data_in: List[Any], **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:
+    def upload_data(self,  **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:
         """Task is binary classification of stance between pair of sentences"""
+        data_in = pd.read_csv(self.args['input_path']) 
+        data_in['stance'] = data_in['stance'].astype(str)
+
         s1_data = [x for x in data_in['s1']]
         s2_data = [x for x in data_in['s2']]
         label_data = [x for x in data_in['stance']]
 
-        data = [[[d, d2], [[label]], [1]] for d, d2, label in zip(s1_data, s2_data, label_data)]
+        data = [{'inp':[d, d2], 'label':[[label]], 'mask':[1]} for d, d2, label in zip(s1_data, s2_data, label_data)]
 
         return data
             
-    def encode(self, raw_data, data_type="input"):
-
-        if data_type == "input":
-            # raw_data is [s1, s2]
-            s1 = self.inp_encoder(raw_data[0], list_input=False)
-            s2 = self.inp_encoder(raw_data[1], list_input=False)
-            return [[s1, s2], [[1]], [1]]
-
-        elif data_type == "label":
-            # raw_data is [[int]]
-            return self.label_encoder(raw_data[0], list_input=False)
-
-        elif data_type == "full":
-            # raw_data is [[s1, s2], [[int]], [1]]
-            s1 = self.inp_encoder(raw_data[0][0], list_input=False)
-            s2 = self.inp_encoder(raw_data[0][1], list_input=False)
-            l = self.label_encoder(raw_data[1][0], list_input=False)
-            return [[s1, s2], [l], [raw_data[2]]]
-        else:
-            raise NotImplemented("data_type must be either input, label or full. Got {}".format(data_type))
-            
-
-    @U.list_applyer   
-    def decode(self, model_output, data_type="label"):
-        if data_type == "input":
-            # raw_data is [s1, s2]
-            s1 = self.inp_decoder(model_output[0], list_input=False)
-            s2 = self.inp_decoder(model_output[1], list_input=False)
-            return [s1, s2]
-
-        elif data_type == "label":
-            # raw_data is [[int]]
-            return self.label_decoder(model_output[0], list_input=False)
-
-        elif data_type == "full":
-            # raw_data is [[s1, s2], [[int]], [1]]
-            s1 = self.inp_decoder(model_output[0][0], list_input=False)
-            s2 = self.inp_decoder(model_output[0][1], list_input=False)
-            l = self.label_decoder(model_output[1], list_input=False)
-            return [[s1, s2], [l], [model_output[2]]]
-        else:
-            raise NotImplemented("data_type must be either input, label or full. Got {}".format(data_type))
-        pass
 
 
 class ListDataset(torch.utils.data.Dataset):
@@ -202,13 +256,13 @@ class ListDataset(torch.utils.data.Dataset):
 class DictDataset(torch.utils.data.Dataset):
     """Implementing data wrapper to enable distributed GPU implementation on a dictionary type dataset"""
 
-    def __init__(self, data_as_dict, indicies_subset=None):
+    def __init__(self, data_as_dict, lims, indicies_subset=None):
         """Takes dictionary of numpy / tensors"""
-        assert isinstance(data_as_dict, dict)
-        self._class = data_as_dict.__class__
-        self.keys = list(data_as_dict.keys())
-        data_len = data_as_dict[self.keys[0]].shape[0]
+        assert isinstance(data_as_dict[0], dict)
+        self.keys = list(data_as_dict[0].keys())
+        data_len = len(data_as_dict)
         self.data = data_as_dict
+        self.lims = lims
 
         if indicies_subset:
             logging.info("Indicies passed to data_wrapper and will be used")
@@ -221,10 +275,17 @@ class DictDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         try:
-            returned = self._class()
-            returned.items = {}
+            returned = dict()
             for key in self.keys:
-                returned.items[key] = self.data[key][self.index[idx]]
+                returned[key] = []
+                for j, feat in enumerate(self.data[idx][key]):
+                    if isinstance(feat, list):
+                        tmp = np.zeros((self.lims[key][j]), dtype=int)
+                        tmp[:min(self.lims[key][j], len(feat))] = feat[:min(self.lims[key][j], len(feat))]
+                        returned[key].append(tmp)
+                    else:
+                        returned[key].append(np.asarray(feat))
+
             return returned
         except NameError as e:
             logging.error("Error at requested index: {}".format(idx))

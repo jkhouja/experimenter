@@ -21,9 +21,11 @@ class BasicTrainer():
         self.evaluator = U.load_class(config['evaluator']['module'], config['evaluator']['class'],  config )
         U.evaluate_params(config['optimizer']['params'], locals())
         self.optimizer = U.load_class(config['optimizer']['module'], config['optimizer']['class'],config['optimizer']['params'], pass_params_as_dict=True)
+        #Needs to be loaded if trainer is laoded 
         self.config = config
-        self.current_epoch = 0 #Needs to be loaded if trainer is laoded 
-    
+        self.config['results'] = {}
+        self.config['results']['during_training'] = {}
+        self.current_epoch = 0     
         
         # Print statistics
         total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
@@ -35,9 +37,11 @@ class BasicTrainer():
         data_as_batches = self.processor(data, list_input=True, as_batches=True)
         res = []
         for i, batch in enumerate(data_as_batches):
-            res.extend(self.model(batch)[1][0]) #which part of the output?
+            #res.extend(self.model(batch))
+            res.extend(self.processor._from_batch(self.model(batch)))
+
         if decode:
-            res = self.processor.decode(res)
+            res = self.processor.decode(res, list_input=True)
         return res
     
     def evaluate(self, data):
@@ -48,8 +52,8 @@ class BasicTrainer():
     def _evaluate_batches(self, data_as_batches):
         self.evaluator.reset()
         for j, b in enumerate(data_as_batches):
-            preds = self.model(b)
-            val_loss = self.evaluator.update_batch(preds, b)
+            res = self.model(b)
+            val_loss = self.evaluator.update_batch(res)
         return val_loss
         
 
@@ -71,17 +75,16 @@ class BasicTrainer():
     
         # Start training
         best_loss = self.evaluator.get_max_loss()
-        results = {}
-        results['during_training'] = {}
+        results = config['results']
         
         print("Starting training:")
-        for i in range(self.current_epoch, self.epochs):
+        for i in range(self.current_epoch + 1, self.current_epoch + self.epochs + 1):
             self.current_epoch = i
             for b in train_batches:
                 
                 self.model.zero_grad()
-                preds = self.model(b)
-                tloss = self.evaluator(preds, b)
+                preds = self.model(b) 
+                tloss = self.evaluator(preds)
                 tloss.backward()
                 self.optimizer.step()
     
@@ -101,13 +104,18 @@ class BasicTrainer():
                         torch.save(self.model.state_dict(), config['model_path'])
                         results['best'] = results['during_training'][str(i)]
                         # Save config
-                        config['results'] = results
                         #with open(config['experiment_output_path'], 'w') as f:
                         #     json.dump(config, f)
                         print("Best model saved at: {}".format(config['model_path']))
         
         if test_batches is not None:
-            print(self._evaluate_batches(test_batches))
+            test_val = self._evaluate_batches(test_batches)
+            results['test'] = {test_val}
+            print("Test loss: {}".format(test_val))
+
+        config['results'] = results
+        #self.config = config
+
         return config
 
 
