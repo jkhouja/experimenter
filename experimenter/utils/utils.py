@@ -1,5 +1,9 @@
-
+import json
 import importlib
+
+def safe_serialize(obj):
+  default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"
+  return json.dumps(obj, default=default)
 
 def is_str(func):
     """Decorator that checks that attribute type is a string
@@ -33,6 +37,16 @@ class chainer:
             data = func(data)
         return data
 
+def move_batch(batch, device):
+    """Moves a batch of dictionary to the corresponding local device"""
+    res = {}
+    for k in batch.keys():
+        if isinstance(batch[k], list):
+            res[k] = [i.to(device) for i in batch[k]]
+        else:
+            res[k] = batch[k].to(device)
+    return res
+
 def load_class(module_name, class_name, class_param,  pass_params_as_dict=False):
     module = importlib.import_module(module_name)
     class_n = getattr(module, class_name)
@@ -42,6 +56,21 @@ def load_class(module_name, class_name, class_param,  pass_params_as_dict=False)
 
 def evaluate_params(params, local_vars=None):
     locals().update(local_vars)
-    for p in params:
-        if isinstance(params[p], dict) and params[p]['eval']:
-            params[p] = eval(params[p]['value'])
+    try:
+        if isinstance(params, dict):
+            for p in params:
+                if isinstance(params[p], dict) and params[p]['eval']:
+                    params[p] = eval(params[p]['value'])
+                elif isinstance(params[p], list):
+                    evaluate_params(params[p], locals())        
+        elif isinstance(params, list):
+            for p in params:
+                if isinstance(p, dict) and p['eval']:
+                    print("Should be here!")
+                    p = eval(p['value'])
+                    print(p)
+                elif isinstance(p, list):
+                    evaluate_params(p, locals())        
+
+    except:
+        print("couldn't evaluate parameter: {}".format(p))

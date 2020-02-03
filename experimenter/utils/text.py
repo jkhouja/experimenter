@@ -78,6 +78,13 @@ class encoder:
         self.update_vocab = update_vocab
         self.no_special_chars = no_special_chars
 
+    def freeze(self):
+        """Lucks down the encoder so that new data does not update the vocab"""
+        self.update_vocab = False
+    
+    def unfreeze(self):
+        """Allows the vocab to be updated based on new data during encoding"""
+        self.update_vocab = True
 
     def get_vocab(self):
         return self.vocab
@@ -134,11 +141,20 @@ class encoder:
             inverse_vocab[self.vocab[char]] = char
         return inverse_vocab
             
-    def decode(self, inp: List[int], inverse_vocab: dict = None) -> str:
+    def decode(self, inp: List[int], inverse_vocab: dict = None, trim_pad=True) -> str:
 
         if inverse_vocab is None:
             inverse_vocab = self.inverse_vocab
 
+        if trim_pad:
+            try:
+                pad = self.vocab[self.padding] 
+                return [inverse_vocab.get(i) for i in inp if i != pad]
+            except KeyError:
+                # padding is not in vocab
+                #print("got exception")
+                #print(inp)
+                pass
         return [inverse_vocab.get(i) for i in inp]
 
 
