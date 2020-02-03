@@ -16,6 +16,7 @@ def is_str(func):
     return decorated
 
 def list_applyer(func):
+    """Decorator that applies the decorated function to each item of input_data"""
     def decorated(self, input_data, list_input=False, **kwargs):
         if not list_input:
             return func(self, input_data, **kwargs)
@@ -28,6 +29,7 @@ def list_applyer(func):
     return decorated
 
 class chainer:
+    """Chain applies the functions in sequence"""
     def __init__(self, funcs):
         self._funcs = funcs
     
@@ -48,6 +50,7 @@ def move_batch(batch, device):
     return res
 
 def load_class(module_name, class_name, class_param,  pass_params_as_dict=False):
+    """Loads a class given it's module name, class name, and dict of params"""
     module = importlib.import_module(module_name)
     class_n = getattr(module, class_name)
     if pass_params_as_dict:
@@ -55,6 +58,7 @@ def load_class(module_name, class_name, class_param,  pass_params_as_dict=False)
     return class_n(class_param)
 
 def evaluate_params(params, local_vars=None):
+    """Helper function that dynamically evaluates parameters that have been set by previous steps"""
     locals().update(local_vars)
     try:
         if isinstance(params, dict):

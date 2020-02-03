@@ -3,7 +3,7 @@ import argparse
 import experimenter
 import sys
 import logging
-from experimenter.utils.training import BasicTrainer
+from experimenter.training import BasicTrainer
 
 def setup_args():
     parser = argparse.ArgumentParser()

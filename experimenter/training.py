@@ -1,8 +1,6 @@
 #import cipher_take_home
 import datetime
 import re
-from collections import defaultdict
-from typing import DefaultDict, Union, List
 import json
 import numpy as np
 import torch
@@ -10,57 +8,80 @@ import os
 import argparse
 import logging
 from experimenter.utils import utils as U
+from pathlib import Path
+from collections import defaultdict
+from typing import DefaultDict, Union, List
 
-
-     
 class BasicTrainer():
+    """Training class that support cpu and gpu training"""
 
-    def __init__(self, kwargs):
-        config = kwargs
+    def __init__(self, config: dict):
+        """Initializes training class and all its submodules from config
+        
+        Args:
+            config: The configuration dictionary.  For details see sample_config.json
+
+        """
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.epochs = config['epochs']
-        self.gpu_mode = not config['disable_gpu'] and torch.cuda.is_available()
-        config['out_path'] = os.path.join(config['root_path'], config['experiment_name'], datetime.datetime.now().strftime("%b_%d_%Y_%H_%M"))
-        self.out_path = os.path.join(config['out_path'], config['experiment_output_file']) 
-        from pathlib import Path
-        Path(config['out_path']).mkdir(parents=True, exist_ok=True)
-        if self.gpu_mode:
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
 
-        config['device'] = self.device
-        self.logger.info("Will be using: {}".format(self.device))
-        self.processor = U.load_class(config['processor']['module'], config['processor']['class'],  config )
-        U.evaluate_params(config['model']['params'], locals())
-        self.model = U.load_class(config['model']['module'], config['model']['class'], config)
-        self.evaluator = U.load_class(config['evaluator']['module'], config['evaluator']['class'],  config )
-        U.evaluate_params(config['optimizer']['params'], locals())
-        self.optimizer = U.load_class(config['optimizer']['module'], config['optimizer']['class'],config['optimizer']['params'], pass_params_as_dict=True)
-        #Needs to be loaded if trainer is laoded 
         self.config = config
         self.config['results'] = {}
         self.config['results']['during_training'] = {}
         self.current_epoch = 0     
-        
-        # Print statistics
-        total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        self.logger.info("Total params: {}".format(total_params))
-        #self.logger.info("Vocab (Size= {}):".format(vocab_size))
+        self.epochs = config['epochs']
+        config['out_path'] = os.path.join(config['root_path'], config['experiment_name'], datetime.datetime.now().strftime("%b_%d_%Y_%H_%M"))
+        self.out_path = os.path.join(config['out_path'], config['experiment_output_file']) 
+        Path(config['out_path']).mkdir(parents=True, exist_ok=True)
 
-    def predict(self, data, decode=True):
+        # Set up GPU / CPU
+        self.gpu_mode = not config['disable_gpu'] and torch.cuda.is_available()
+        if self.gpu_mode:
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
+        config['device'] = self.device
+        self.logger.info("Will be using: {}".format(self.device))
+
+        self.processor = U.load_class(config['processor']['module'], config['processor']['class'],  config )
+
+        U.evaluate_params(config['model']['params'], locals())
+        self.model = U.load_class(config['model']['module'], config['model']['class'], config)
+
+        self.evaluator = U.load_class(config['evaluator']['module'], config['evaluator']['class'],  config )
+
+        U.evaluate_params(config['optimizer']['params'], locals())
+        self.optimizer = U.load_class(config['optimizer']['module'], config['optimizer']['class'],config['optimizer']['params'], pass_params_as_dict=True)
+
+    def predict(self, data: list, decode: bool = True) -> list:
+        """Given raw data (unprocessed), run prediction pipeline and return predictions
+
+        Args:
+            data: Data raw. Following the expected format fof the task
+            decode: If model output needs to be decoded or not, default: True
+
+        Returns:
+            res: Result of running the pipeline.
+        """
         assert len(data) > 1
         data_as_batches = self.processor(data, list_input=True, as_batches=True)
         res = []
         for i, batch in enumerate(data_as_batches):
-            #res.extend(self.model(batch))
+            #res.extend(self.model(U.move_batch(batch, self.device)))
             res.extend(self.processor._from_batch(self.model(U.move_batch(batch, self.device))))
 
         if decode:
             res = self.processor.decode(res, list_input=True)
         return res
     
-    def evaluate(self, data):
+    def evaluate(self, data: list) -> list:
+        """Runs the evaluation (metrics not loss) on the data
+
+        Args:
+            data: list of raw data to be evaluated
+
+        Returns:
+            metric: The evaluation metric(s)
+        """
         assert len(data) > 1
         data_as_batches = self.processor(data, list_input=True, as_batches=True)
         return self._evaluate_batches(data_as_batches)
@@ -73,13 +94,21 @@ class BasicTrainer():
         return val_loss
         
 
-    def train_model(self, data=None) -> dict:
+    def train_model(self, data: list = None) -> dict:
+        """ Train the model on the data.
+
+        Args:
+            data: the data to be trained on. If not provided, default training split will be used
+
+        Returns:
+            resulting config file after training
+        """
+
         # Generate and process data    
         config = self.config
 
         if not data:
             data = self.processor.get_data()
-
         
         train_batches = data[0] 
         val_batches = None
@@ -140,8 +169,4 @@ class BasicTrainer():
                 f.write(U.safe_serialize(config))
 
         config['results'] = results
-        #self.config = config
-
         return config
-
-

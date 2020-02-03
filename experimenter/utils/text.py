@@ -6,10 +6,11 @@ from experimenter.utils import utils as U
 ARABIC_DIACRITICS = r"['ِ''ُ''ٓ''ٰ''ْ''ٌ''ٍ''ً''ّ''َ'`\"]"
 
 class clean_text:
+    """Removes regex matching text with from input_text"""
     def __init__(self, regex = ARABIC_DIACRITICS, **kwargs):
         self.remove = re.compile(regex)
 
-    def __call__(self, input_text):
+    def __call__(self, input_text: str = None):
         """Removes regex matching text from input_text
 
         Calling this method on arabic text with default regexg removes diacritics from the string.
@@ -20,6 +21,8 @@ class clean_text:
         Returns:
             The text after removing parts that matches self.remove.
         """
+        if input_text is None:
+            return None
         return re.sub(self.remove, "", input_text.strip())
 
 class tokenizer:
@@ -142,6 +145,7 @@ class encoder:
         return inverse_vocab
             
     def decode(self, inp: List[int], inverse_vocab: dict = None, trim_pad=True) -> str:
+        """Returns symbols from indices"""
 
         if inverse_vocab is None:
             inverse_vocab = self.inverse_vocab
