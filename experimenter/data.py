@@ -20,7 +20,7 @@ class DataProvider(object):
         self.drop_last = self.args['drop_last']
         self.seq_len = self.args['seq_len']
         self.splits = self.args['splits']
-        self.input_path = os.path.join(config['root_path'], self.args['input_path'])
+        self.input_path = [os.path.join(config['root_path'], path) for path in self.args['input_path']]
         self.logger = logging.getLogger(self.__class__.__name__)
         
 

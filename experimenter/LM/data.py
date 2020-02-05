@@ -53,7 +53,7 @@ class LMProvider(DataProvider):
         
         currently, reads csv that contains two columns s1, s2 and stance with sentences in each
         """
-        data_in = pd.read_csv(self.input_path) 
+        data_in = pd.read_csv(self.input_path[0]) 
         data_in['stance'] = data_in['stance'].astype(str)
 
         f = lambda x: "S" + x + "E"

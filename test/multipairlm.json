@@ -8,8 +8,8 @@
            "processor": {
                 "module": "experimenter.MultiLMPairClassification.data",
                 "class": "MultiLMPairProvider",
-                "params":{"input_path": "arabic_sample_data.csv",
-                          "seq_len": {"inp":[10, 10], "label":[50, 1],"mask":[1, 1]}, "batch_size": 4, "splits": [0.7, 0.2, 0.1], "drop_last":true,  "shuffle": true, "vocab_path": "vocab.json"}},
+                "params":{"input_path": ["arabic_sample_data.csv"],
+                          "seq_len": {"inp":[10, 10], "label":[10, 1],"mask":[1, 1]}, "batch_size": 4, "splits": [0.7, 0.2, 0.1], "drop_last":true,  "shuffle": true, "vocab_path": "vocab.json"}},
            "model":{
                 "module": "experimenter.MultiLMPairClassification.modeling",
                 "class": "RNNMultiLMPairModel",

@@ -57,20 +57,26 @@ class PairClsProvider(DataProvider):
         Args:
             input_path: In config file, file should be csv and contains 3 columns: s1, s2, and stance
         """
-        data_in = pd.read_csv(self.input_path) 
-        data_in['stance'] = data_in['stance'].astype(str)
+        data_in = [pd.read_csv(inp_path) for inp_path in self.input_path]
+        self.logger.debug(f"Number of loaded files (splits): {len(data_in)}")
+
+        # Need to remove this
+        for df in data_in:
+            df['stance'] = df['stance'].astype(str)
 
 
-        self.logger.info("All loaded data size:{}".format(data_in.shape[0]))
+        self.logger.info("All loaded data size:{}".format([d.shape[0] for d in data_in]))
 
-        splits = self._create_splits(data_in.to_dict(orient='records'))
+        if len(data_in) == 1 and self.splits is not None: #Only one split provided and splits has been set in config
+            splits = self._create_splits(data_in[0].to_dict(orient='records'))
+        else:
+            splits = [d.to_dict(orient='records') for d in data_in]
         out = []
         for split in splits:
-            data_in = split
-
-            s1_data = [x['s1'] for x in data_in]
-            s2_data = [x['s2'] for x in data_in]
-            labels = [x['stance'] for x in data_in]
+            #data_in = split
+            s1_data = [x['s1'] for x in split]
+            s2_data = [x['s2'] for x in split]
+            labels = [x['stance'] for x in split]
 
             data = [{'inp':[d, d2], 'label':[[label]], 'mask':[70]} for d, d2, label in zip(s1_data, s2_data, labels)]
 

@@ -54,7 +54,7 @@ class MultiLMPairProvider(DataProvider):
 
     def upload_data(self,  **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:
         """Task is LM and classification of stance between pair of sentences"""
-        data_in = pd.read_csv(self.input_path) 
+        data_in = pd.read_csv(self.input_path[0]) 
         data_in['stance'] = data_in['stance'].astype(str)
 
         self.logger.info("All loaded data size:{}".format(data_in.shape[0]))
