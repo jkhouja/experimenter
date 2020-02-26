@@ -12,17 +12,34 @@ class DataProvider(object):
     """ Parent class of all data providers
 
     """
-    def __init__(self, config: dict):
+    def __init__(self, config: dict) -> None:
         self.args = config['processor']['params']
+        self.config = config
         self.batch_size = self.args['batch_size']
-        assert self.batch_size > 2
+        assert self.batch_size >= 2
         self.shuffle = self.args['shuffle']
         self.drop_last = self.args['drop_last']
         self.seq_len = self.args['seq_len']
         self.splits = self.args['splits']
         self.input_path = [os.path.join(config['root_path'], path) for path in self.args['input_path']]
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
+    def save_split(self, split: list, split_name: str) -> None:
+        """Saves a provided data split to disk
+
+        Args: 
+        split: Data split that will be saved
+        split_name: File name to use for saved file
+
+        """
+        import csv
+        csv_columns = split[0].keys()
+        path = os.path.join(self.config['out_path'], "".join((split_name, ".csv")))
+        with open(path, 'w') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+                writer.writeheader()
+                for data in split:
+                    writer.writerow(data) 
 
     def _to_batches(self, data: list):
         """Creates pytorch batches from (processed) data
@@ -62,9 +79,12 @@ class DataProvider(object):
         return res
 
 
-    def get_data(self) -> List[List]:
-        """Returns self.data"""
-        return self.data
+    def get_data(self, raw: bool = False) -> List[List]:
+        """Returns self.data unless raw is set true in which case returns self.data_raw"""
+        if not raw:
+            return self.data
+        else:
+            return self.data_raw
 
     def encode(self, raw_data: List) -> List:
         """Encodes raw_data

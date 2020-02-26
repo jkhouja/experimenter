@@ -46,10 +46,10 @@ class MultiLMPairProvider(DataProvider):
         s = [self.__call__(d, list_input=True) for d in raw_data]
         enc.freeze()
         #d = self._create_splits(s)
-        self.data_raw = s
+        self.data_raw = raw_data
         self.data = tuple([self._to_batches(split) for split in s])
 
-        self.sample_data = raw_data[0][12]
+        self.sample_data = raw_data[0][1]
         config['processor']['params']['vocab_size'] = len(enc.vocab) #Needs changing, we might have multiple vocabs
 
     def upload_data(self,  **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:

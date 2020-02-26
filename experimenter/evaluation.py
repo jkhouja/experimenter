@@ -1,6 +1,7 @@
 import torch
 from experimenter.utils import utils as U
 import numpy as np
+import logging
 
 
 class Accuracy:
@@ -17,12 +18,13 @@ class Accuracy:
         """
         assert isinstance(prediction, torch.Tensor)
         assert isinstance(label, torch.Tensor)
-        #print(prediction)
-        #print(label)
+        logging.debug(f'prediction: {prediction}')
+        logging.debug(f'true label: {label}')
         corrects = (prediction == label).sum().float()
         total = label.shape[0]
         val_score = corrects
         val_score /=  total
+        logging.debug(f'Val_score: {val_score}')
         return val_score.cpu().detach().numpy()
 
 class Dummy:
@@ -42,6 +44,7 @@ class Dummy:
 class ListEvaluator:
     
     def __init__(self, config):
+        self.logger = logging.getLogger(self.__class__.__name__)
         loss_f = config['evaluator']['params']['loss_f']
         metrics_f = config['evaluator']['params']['metrics_f']
         self.device = config['device']
@@ -66,6 +69,37 @@ class ListEvaluator:
         self.current_metrics = loss
         return [metric / self.num_items for metric in self.current_metrics]
 
+    def update_batch_loss(self, data, aggregate = "sum"):
+        """Mimics the update_batch but operates on the loss function not the metric function"""
+
+        floss = 0
+        #Iterate through all outputs / losses
+        for k, f in enumerate(self.loss_f):
+            # for each loss, multiply with the mask
+            # Do proper casting based on f_func instance type
+
+            tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
+            #tmp_loss = f(preds[0][k], y[k].squeeze().type(torch.LongTensor))
+            if tmp_loss.dim() > 1:
+                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length (vocab)
+            floss += (tmp_loss * data['mask'][k]) #mean should be updated to sum / none and other
+
+        if aggregate == "mean":
+            floss = floss.mean()
+        elif aggregate == "sum":
+            floss = floss.sum()
+        else:
+            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
+
+        self.num_items_loss += data['inp'][0].shape[0] #Add one batch count #data['inp'][0].shape[0]
+        loss = self.current_loss + (floss * data['inp'][0].shape[0]) 
+
+        # Sum of all loss across batches
+        self.current_loss = loss
+
+        # Return average loss to this point
+        return [loss.data.cpu().numpy() / self.num_items_loss]
+
     def get_metrics(self, data):
         #Iterate through all outputs / losses
         res = []
@@ -89,10 +123,15 @@ class ListEvaluator:
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
             tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
+            self.logger.debug(f"Evaluator - labels[{k}]: {data['label'][k]}")
+            self.logger.debug(f"Evaluator - output[{k}]: {data['out'][k]}")
             #tmp_loss = f(preds[0][k], y[k].squeeze().type(torch.LongTensor))
+            self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
             if tmp_loss.dim() > 1:
                 tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length (vocab)
+                self.logger.debug(f"Evaluator tmp loss {k} after summation: {tmp_loss}")
             floss += (tmp_loss * data['mask'][k]) #mean should be updated to sum / none and other
+
 
         if aggregate == "mean":
             floss = floss.mean()
@@ -100,6 +139,7 @@ class ListEvaluator:
             floss = floss.sum()
         else:
             raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
+        self.logger.debug("Evaluator loss: {}".format(floss))
 
         return floss
 
@@ -116,6 +156,9 @@ class ListEvaluator:
         self.num_items = 0
         self.current_metrics = self.get_initial_loss()
 
+        self.num_items_loss = 0
+        self.current_loss = 0
+
 
     def get_initial_loss(self):
         res = [0] * len(self.metrics_f) 
@@ -125,7 +168,13 @@ class ListEvaluator:
         return [0] * len(self.metrics_f)
 
 
-    def isbetter(self, a, b):
-        # Bad implementation, find a way to compare other metrics
-        return np.all(a > b)
+    def get_worst_loss(self):
+        return [np.inf] * len(self.metrics_f)
 
+    def isbetter(self, a, b, is_metric = True):
+        """If is metric, we're assuming higher is better (think accuracy), else, it's a loss and lower is better"""
+        # Bad implementation, find a way to compare other metrics
+        if is_metric:
+            return np.all(a > b)
+        else:
+            return np.all(a < b)

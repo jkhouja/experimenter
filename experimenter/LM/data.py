@@ -42,7 +42,7 @@ class LMProvider(DataProvider):
         raw_data = self.upload_data()
         s = self.__call__(raw_data, list_input=True)
         enc.freeze()
-        self.sample_data = raw_data[12]
+        self.sample_data = raw_data[1]
         config['processor']['params']['vocab_size'] = len(enc.vocab) #Needs changing, we might have multiple vocabs
         d = self._create_splits(s)
         self.data_raw = d

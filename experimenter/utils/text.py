@@ -1,6 +1,7 @@
 import re
 from typing import List, Union
 from experimenter.utils import utils as U
+import logging
 
 
 ARABIC_DIACRITICS = r"['ِ''ُ''ٓ''ٰ''ْ''ٌ''ٍ''ً''ّ''َ'`\"]"
@@ -133,7 +134,7 @@ class encoder:
 
         if not update_vocab:
             #Show statistics
-            print("Number of OOV: {}".format(num_unk))
+            logging.debug("Number of OOV: {}".format(num_unk))
         return wid
 
     def get_inverse(self):
