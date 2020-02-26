@@ -24,7 +24,7 @@ if __name__ == "__main__":
     # First, list the supported VM families for Azure Machine Learning Compute
     #ws = Workspace.get('experiments')
     cluster_name = "gpucluster"
-    experiment_name = args_dict['experiment_name']
+    experiment_name = args_dict['experiment_name'] + "_azure"
     disable_gpu = args_dict['disable_gpu'] or args.disable_gpu
     script_folder = "."
 
@@ -62,9 +62,16 @@ if __name__ == "__main__":
     
     
     s = ws.get_default_datastore()
-    azure_path = s.upload(src_dir=args_dict['root_path'],
+    azure_data_path = s.upload(src_dir=args_dict['root_path'],
                      target_path=args_dict['root_path'],
                      overwrite=False,
+                     show_progress=True)
+
+    script_target_path = "/".join(args.config_file.split("/")[:-1]) #All path except file_name
+    script_fname = args.config_file.split("/")[-1]
+    azure_script_path = s.upload(script_target_path,
+                     target_path=args.config_file,
+                     overwrite=True,
                      show_progress=True)
     
     exp = Experiment(workspace=ws, name=experiment_name)
@@ -72,8 +79,9 @@ if __name__ == "__main__":
     
     # Using pytorch estimator - proper way to submit pytorch jobs
     script_params = {
-        '--config_file': args.config_file, 
-        '--data_path': azure_path
+        '--config_file': azure_script_path, 
+        '--data_path': azure_data_path,
+        '--experiment_name': experiment_name
     }
 
     print("GPU Disabled: {}".format(args.disable_gpu))
@@ -86,4 +94,4 @@ if __name__ == "__main__":
                         pip_packages=['pillow==5.4.1'])
     
     run = exp.submit(estimator)
-    run.wait_for_completion(show_output = True)
+    #run.wait_for_completion(show_output = True)
