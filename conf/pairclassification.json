@@ -1,0 +1,32 @@
+{
+ "experiment_name": "PairStanceClassification",
+ "root_path" : "/Users/jkhouja/workspace/experiments/arabic_media/",
+ "experiment_output_file": "results.json",
+ "model_path": "model.state",
+ "log_interval": 1, 
+ "disable_gpu": false,
+ "epochs": 2,
+ "processor": {
+      "module": "experimenter.PairClassification.data",
+      "class": "PairClsProvider",
+      "params":{"input_path": "data/batch_0_to_15000_pairs_sep__score_10_ngrams_2_3_4_5_6.csv",
+                "seq_len": {"inp":[10,20], "label":[1],"mask":[1]}, "batch_size": 4, "splits": [0.7, 0.2, 0.1], "drop_last":true,  "shuffle": true, "vocab_path": "vocab.json"}},
+ "model":{
+      "module": "experimenter.PairClassification.modeling",
+      "class": "RNNPairModel",
+      "params":{"embedding_dim": 10, "hidden_dim": 60, "num_classes": 3, "dropout": 0, "max_seq_len": {"eval": 1, "value": "config['processor']['params']['seq_len']['inp'][0]"}}},
+
+  "evaluator":{
+      "module": "experimenter.evaluation",
+      "class": "ListEvaluator",
+      "params": {"loss_f": [{"module": "torch.nn", "class": "CrossEntropyLoss", "params": {"reduction": "none"}}],
+                "metrics_f": [{"module": "experimenter.evaluation", "class": "Accuracy", "params": {}}]}},
+  "optimizer":{
+      "module": "torch.optim",
+      "class": "Adam",
+      "params":{
+          "params": {
+          "eval": 1,
+          "value": "config['model']['model'].parameters()"},
+      "lr":  0.001}}
+ }

@@ -27,7 +27,9 @@ class BaseModel(torch.nn.Module):
         self.to(self.device)
         # Print statistics
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        self.logger.info("Total params: {}".format(total_params))
+        self.logger.info("Total learnable params: {}".format(total_params))
+        for param in self.parameters():
+            print(type(param.data), param.size())
 
 
     def initialize_h(self, batch_size):

@@ -50,9 +50,11 @@ class ListEvaluator:
         self.device = config['device']
         self.loss_f = []
         for f in loss_f:
+            U.evaluate_params(f['params'], locals())
             self.loss_f.append(U.load_class(f['module'], f['class'], f['params'], pass_params_as_dict=True))
         self.metrics_f = []
         for f in metrics_f:
+            U.evaluate_params(f['params'], locals())
             self.metrics_f.append(U.load_class(f['module'], f['class'], f['params'], pass_params_as_dict=True))
         self.reset()
 
@@ -69,36 +71,59 @@ class ListEvaluator:
         self.current_metrics = loss
         return [metric / self.num_items for metric in self.current_metrics]
 
-    def update_batch_loss(self, data, aggregate = "sum"):
-        """Mimics the update_batch but operates on the loss function not the metric function"""
+    def update_batch_loss(self, data, aggregate = "mean"):
+        """Mimics the update_batch but operates on the loss function not the metric function. 
+        Logis is same as call but maintains a global state across batches.
+        Assumes the loss function either has shape [batch, probs by class or real value for regression] for loss per example or [batch,seq_len, probs]
+        for when prediction is for a sequence (lm / conversation / multi-class) in which case it sums over dimention 1."""
 
         floss = 0
+        batch_items = 0
         #Iterate through all outputs / losses
+        if aggregate not in ("mean", "sum"):
+            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
         for k, f in enumerate(self.loss_f):
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
-
             tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
-            #tmp_loss = f(preds[0][k], y[k].squeeze().type(torch.LongTensor))
+            self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
+            num_items = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
             if tmp_loss.dim() > 1:
-                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length (vocab)
-            floss += (tmp_loss * data['mask'][k]) #mean should be updated to sum / none and other
+                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
+                num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1)
+                if aggregate == "mean":
+                    tmp_loss = tmp_loss * num_items
+            tmp_loss = (tmp_loss * data['mask'][k])
+            num_items = (num_items * (data['mask'][k] > 0)).sum()
+            num_items = num_items.data.cpu().numpy()
+            if aggregate == "mean":
+                if num_items == 0:
+                    tmp_loss = 0
+                else:
+                    tmp_loss = tmp_loss.sum().data.cpu().numpy() / num_items
+            if aggregate == "sum":
+                tmp_loss = tmp_loss.sum()
+            floss += tmp_loss#mean should be updated to sum / none and other
+            batch_items += num_items
+
+        self.logger.debug("Evaluator loss: {}".format(floss))
+
+        self.num_items_loss += batch_items #Add one batch count #data['inp'][0].shape[0]
 
         if aggregate == "mean":
-            floss = floss.mean()
-        elif aggregate == "sum":
-            floss = floss.sum()
-        else:
-            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
-
-        self.num_items_loss += data['inp'][0].shape[0] #Add one batch count #data['inp'][0].shape[0]
-        loss = self.current_loss + (floss * data['inp'][0].shape[0]) 
+            # need to calculate sum weighted by total items in batch
+            loss = self.current_loss + (floss * batch_items) 
+        if aggregate == "sum":
+            loss = self.current_loss + floss
 
         # Sum of all loss across batches
         self.current_loss = loss
 
         # Return average loss to this point
-        return [loss.data.cpu().numpy() / self.num_items_loss]
+        if aggregate == "mean":
+            return [loss / self.num_items_loss]
+        elif aggregate == "sum":
+            return [loss]
 
     def get_metrics(self, data):
         #Iterate through all outputs / losses
@@ -117,8 +142,11 @@ class ListEvaluator:
         # Get score
 
     def __call__(self, data, aggregate = "mean"):
+        """Called during training step to get a single loss value and backpropagate"""
         floss = 0
         #Iterate through all outputs / losses
+        if aggregate not in ("mean", "sum"):
+            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
         for k, f in enumerate(self.loss_f):
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
@@ -127,23 +155,31 @@ class ListEvaluator:
             self.logger.debug(f"Evaluator - output[{k}]: {data['out'][k]}")
             #tmp_loss = f(preds[0][k], y[k].squeeze().type(torch.LongTensor))
             self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
+            num_items = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
             if tmp_loss.dim() > 1:
-                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length (vocab)
+                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
+                if aggregate == "mean":
+                    num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1)
+                    tmp_loss = tmp_loss * num_items
                 self.logger.debug(f"Evaluator tmp loss {k} after summation: {tmp_loss}")
-            floss += (tmp_loss * data['mask'][k]) #mean should be updated to sum / none and other
+            tmp_loss = (tmp_loss * data['mask'][k])
+            if aggregate == "mean":
+                num_items = (num_items * (data['mask'][k] > 0)).sum()
+                self.logger.debug(f"Number of items after masking: {num_items}")
+                if num_items == 0:
+                    tmp_loss = 0
+                else:
+                    tmp_loss = tmp_loss.sum() / num_items
+            if aggregate == "sum":
+                tmp_loss = tmp_loss.sum()
+            floss += tmp_loss#mean should be updated to sum / none and other
 
-
-        if aggregate == "mean":
-            floss = floss.mean()
-        elif aggregate == "sum":
-            floss = floss.sum()
-        else:
-            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
         self.logger.debug("Evaluator loss: {}".format(floss))
 
         return floss
 
     def _applyloss(self, f, output, label):
+        """Calls the loss function with no aggregation.  Should return either [batch_size,] for class or [batch_size, seq_len] for sequence classes"""
         if isinstance(f, torch.nn.CrossEntropyLoss):
             if self.device == 'cuda':
                 tmp_loss = f(output, label.squeeze().type(torch.cuda.LongTensor))

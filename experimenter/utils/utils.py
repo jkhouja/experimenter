@@ -76,5 +76,6 @@ def evaluate_params(params, local_vars=None):
                 elif isinstance(p, list):
                     evaluate_params(p, locals())        
 
-    except:
+    except Exception as e:
         print("couldn't evaluate parameter: {}".format(p))
+        raise e

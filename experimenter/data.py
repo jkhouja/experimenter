@@ -114,7 +114,12 @@ class DataProvider(object):
         res = dict()
         for key in model_output.keys():
             res[key] = []
+            if key == "meta":
+                # For the meta keys, we don't have decoder per feature rather it's passed as is.
+                res[key].append(self.decoder[key](model_output[key]))
+                continue
             for i, feat in enumerate(model_output[key]):
+                self.logger.debug(f"Decoding key: {key}")
                 res[key].append(self.decoder[key][i](feat, list_input=False))
 
         return res
@@ -150,6 +155,7 @@ class DataProvider(object):
             
             
             if self.shuffle:
+              self.logger.info("Shuffling data")
               indices = random.sample(range(num_total), num_total)
             else:
               indices = range(num_total)
@@ -255,6 +261,7 @@ class DictDataset(torch.utils.data.Dataset):
             for key in self.keys:
                 returned[key] = []
                 for j, feat in enumerate(self.data[idx][key]):
+                    #logging.debug(feat)
                     if isinstance(feat, list):
                         tmp = np.zeros((self.lims[key][j]), dtype=int)
                         tmp[:min(self.lims[key][j], len(feat))] = feat[:min(self.lims[key][j], len(feat))]

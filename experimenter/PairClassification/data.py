@@ -21,8 +21,8 @@ class PairClsProvider(DataProvider):
         #char_tokenizer = text.tokenizer(sep='')
         #word_tokenizer = text.tokenizer(sep=' ')
 
-        enc = text.encoder(update_vocab=True, no_special_chars=False)
-        label_enc = text.encoder(update_vocab=True, no_special_chars=True)
+        enc = text.Encoder(update_vocab=True, no_special_chars=False)
+        label_enc = text.Encoder(update_vocab=True, no_special_chars=True)
 
         self.input_a = self.args['input_a']
         self.input_b = self.args['input_b']

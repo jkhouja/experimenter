@@ -19,10 +19,10 @@ class MultiLMPairProvider(DataProvider):
         char_tokenizer = text.tokenizer(sep='')
         word_tokenizer = text.tokenizer(sep=' ')
 
-        enc = text.encoder(update_vocab=True, no_special_chars=False)
+        enc = text.Encoder(update_vocab=True, no_special_chars=False)
         sent_enc = U.chainer(funcs=[cleaner, char_tokenizer, enc])
         sent_dec = U.chainer(funcs=[enc.decode, char_tokenizer.detokenize])
-        label_enc = text.encoder(update_vocab=True, no_special_chars=True)
+        label_enc = text.Encoder(update_vocab=True, no_special_chars=True)
         as_is = U.chainer(funcs=[lambda x:  x])
 
         self.encoder = {}
@@ -47,6 +47,9 @@ class MultiLMPairProvider(DataProvider):
         enc.freeze()
         #d = self._create_splits(s)
         self.data_raw = raw_data
+        self.logger.info("Sample Raw Example:")
+        self.logger.info(self.data_raw[0])
+
         self.data = tuple([self._to_batches(split) for split in s])
 
         self.sample_data = raw_data[0][1]

@@ -19,8 +19,8 @@ class LMProvider(DataProvider):
         char_tokenizer = text.tokenizer(sep='')
         word_tokenizer = text.tokenizer(sep=' ')
 
-        enc = text.encoder(update_vocab=True, no_special_chars=False)
-        #label_enc = text.encoder(update_vocab=True, no_special_chars=True)
+        enc = text.Encoder(update_vocab=True, no_special_chars=False)
+        #label_enc = text.Encoder(update_vocab=True, no_special_chars=True)
 
         self.encoder = {}
         self.encoder['inp'] = [U.chainer(funcs=[cleaner, char_tokenizer, enc])]

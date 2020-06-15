@@ -2,6 +2,7 @@ import re
 from typing import List, Union
 from experimenter.utils import utils as U
 import logging
+import collections
 
 
 ARABIC_DIACRITICS = r"['ِ''ُ''ٓ''ٰ''ْ''ٌ''ٍ''ً''ّ''َ'`\"]"
@@ -59,28 +60,39 @@ class tokenizer:
         
 
 #Convert String (sequence of characters) to indeces
-class encoder:
+class Encoder:
 
-    def __init__(self, vocab: dict = None, update_vocab: bool = True, no_special_chars: bool = False):
+    def __init__(self, vocab: dict = None, update_vocab: bool = True, no_special_chars: bool = False, max_vocab_size=None, min_vocab_count=None):
         # Initialize new vocab if none is provided
         # System wide special characters
         padding = "<PAD>"
         unk = "<UNK>"
-        if not vocab:
-            vocab = {}
-            if not no_special_chars:
-                vocab[padding] = len(vocab)
-                vocab[unk] = len(vocab)
-        if not no_special_chars:
-            # Make sure the vocab adheres to special token indices
-            assert vocab[padding] == 0
-            assert vocab[unk] == 1
-        
-        self.vocab = vocab
         self.padding = padding
         self.unk = unk
-        self.update_vocab = update_vocab
+        self.max_vocab_size = max_vocab_size
+        self.min_vocab_count = min_vocab_count
         self.no_special_chars = no_special_chars
+        self.update_vocab = update_vocab
+        self.wc = collections.Counter()
+        
+        if not vocab:
+            self.vocab = self.get_empty_vocab()
+        else:
+            self.vocab = vocab
+        if not no_special_chars:
+            # Make sure the vocab adheres to special token indices
+            assert self.vocab[padding] == 0
+            assert self.vocab[unk] == 1
+        
+
+    def get_empty_vocab(self):
+        vocab = {}
+        if not self.no_special_chars:
+            vocab[self.padding] = len(vocab)
+            vocab[self.unk] = len(vocab)
+
+        return vocab
+        
 
     def freeze(self):
         """Lucks down the encoder so that new data does not update the vocab"""
@@ -92,6 +104,37 @@ class encoder:
 
     def get_vocab(self):
         return self.vocab
+
+    def filter_vocab(self):
+
+        if self.max_vocab_size is not None:
+            min_c = self.wc.most_common(self.max_vocab_size)[-1][1]
+            min_count = min(min_c, self.min_vocab_count) #might not include beg / padding etc. need to make sure they are there
+
+            filtered_wc = {}
+            unk = 0
+            for w, c in self.wc.items():
+                if c <= min_count:
+                    unk += c
+                else:
+                    filtered_wc[w] = c
+
+            if self.unk in filtered_wc:
+                filtered_wc[self.unk] += unk
+            else:
+                filtered_wc[self.unk] = unk
+        
+            self.wc = collections.Counter(filtered_wc)
+
+            filtered_vocab = self.get_empty_vocab()
+            for w, c in self.wc.items():
+                if w not in filtered_vocab: #Make sure it's not PAD or UNK or anything we already include in initialization
+                    filtered_vocab[w] = len(filtered_vocab)
+            
+            self.vocab = filtered_vocab
+
+    def get_padding_indx(self):
+        return self.vocab[self.padding]
 
     def __call__(self, input_data: str, vocab: dict = None, update_vocab: bool = None, no_special_chars: bool = None) -> Union[List[List[int]], dict]:
 
@@ -111,6 +154,8 @@ class encoder:
         vocab_keys = set(vocab.keys())
         #for inp in input_data:
         wid = []
+        if update_vocab:
+            self.wc.update(input_data)
         for char in input_data:
             if char not in vocab_keys:
                 # Add to vocab if allowed
@@ -129,13 +174,14 @@ class encoder:
             # If in vocab, retreive index
                 wid.append(vocab[char])
         #results.append(wid)
-        
-        self.inverse_vocab = self.get_inverse()
 
+        
         if not update_vocab:
             #Show statistics
-            logging.debug("Number of OOV: {}".format(num_unk))
+            #logging.debug("Number of OOV: {}".format(num_unk))
+            pass
         return wid
+
 
     def get_inverse(self):
         
@@ -149,7 +195,7 @@ class encoder:
         """Returns symbols from indices"""
 
         if inverse_vocab is None:
-            inverse_vocab = self.inverse_vocab
+            inverse_vocab = self.get_inverse()
 
         if trim_pad:
             try:
@@ -157,8 +203,6 @@ class encoder:
                 return [inverse_vocab.get(i) for i in inp if i != pad]
             except KeyError:
                 # padding is not in vocab
-                #print("got exception")
-                #print(inp)
                 pass
         return [inverse_vocab.get(i) for i in inp]
 
