@@ -71,59 +71,6 @@ class ListEvaluator:
         self.current_metrics = loss
         return [metric / self.num_items for metric in self.current_metrics]
 
-    def update_batch_loss(self, data, aggregate = "mean"):
-        """Mimics the update_batch but operates on the loss function not the metric function. 
-        Logis is same as call but maintains a global state across batches.
-        Assumes the loss function either has shape [batch, probs by class or real value for regression] for loss per example or [batch,seq_len, probs]
-        for when prediction is for a sequence (lm / conversation / multi-class) in which case it sums over dimention 1."""
-
-        floss = 0
-        batch_items = 0
-        #Iterate through all outputs / losses
-        if aggregate not in ("mean", "sum"):
-            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
-        for k, f in enumerate(self.loss_f):
-            # for each loss, multiply with the mask
-            # Do proper casting based on f_func instance type
-            tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
-            self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
-            num_items = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
-            if tmp_loss.dim() > 1:
-                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
-                num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1)
-                if aggregate == "mean":
-                    tmp_loss = tmp_loss * num_items
-            tmp_loss = (tmp_loss * data['mask'][k])
-            num_items = (num_items * (data['mask'][k] > 0)).sum()
-            num_items = num_items.data.cpu().numpy()
-            if aggregate == "mean":
-                if num_items == 0:
-                    tmp_loss = 0
-                else:
-                    tmp_loss = tmp_loss.sum().data.cpu().numpy() / num_items
-            if aggregate == "sum":
-                tmp_loss = tmp_loss.sum()
-            floss += tmp_loss#mean should be updated to sum / none and other
-            batch_items += num_items
-
-        self.logger.debug("Evaluator loss: {}".format(floss))
-
-        self.num_items_loss += batch_items #Add one batch count #data['inp'][0].shape[0]
-
-        if aggregate == "mean":
-            # need to calculate sum weighted by total items in batch
-            loss = self.current_loss + (floss * batch_items) 
-        if aggregate == "sum":
-            loss = self.current_loss + floss
-
-        # Sum of all loss across batches
-        self.current_loss = loss
-
-        # Return average loss to this point
-        if aggregate == "mean":
-            return [loss / self.num_items_loss]
-        elif aggregate == "sum":
-            return [loss]
 
     def get_metrics(self, data):
         #Iterate through all outputs / losses
@@ -141,12 +88,123 @@ class ListEvaluator:
         
         # Get score
 
+    def update_batch_loss(self, data, aggregate = "mean"):
+        """Mimics the update_batch but operates on the loss function not the metric function. 
+        Logis is same as call but maintains a global state across batches.
+        Assumes the loss function either has shape [batch, probs by class or real value for regression] for loss per example or [batch,seq_len, probs]
+        for when prediction is for a sequence (lm / conversation / multi-class) in which case it sums over dimention 1."""
+
+        floss = [0] * len(self.loss_f) # loss across all losses in batch
+        batch_items = [0] * len(self.loss_f) #total tokens in batch
+        #Iterate through all outputs / losses
+        if aggregate not in ("mean"):
+            raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
+
+        if aggregate == "mean":
+            for k, f in enumerate(self.loss_f):
+                # for each loss, multiply with the mask
+                # Do proper casting based on f_func instance type
+                tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
+                self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
+                b_size = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
+                self.logger.debug(f"Batch size: {b_size}")
+                if tmp_loss.dim() > 1:
+                    # label is a sequence of labels not a single label
+                    tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
+                    tmp_loss = (tmp_loss * data['mask'][k])
+
+                    num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
+                    self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
+
+                    #tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.  Shape: [batch_size, }
+
+                    num_items = (num_items * (data['mask'][k] > 0)).sum()
+                    self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+                else:
+                    tmp_loss = (tmp_loss * data['mask'][k])
+
+                    num_items = 1 # Assume each example is 1. will be broadcasted across batch_size
+                    self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
+                    num_items = (num_items * (data['mask'][k] > 0)).sum()
+                    self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+                    assert num_items == (data['mask'][k] > 0).sum()
+                    #tmp_loss = tmp_loss * num_items
+
+
+                #tmp_loss = (tmp_loss * data['mask'][k])
+                #num_items = (num_items * (data['mask'][k] > 0)).sum()
+                #self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+                num_items = num_items.data.cpu().numpy()
+                if num_items == 0:
+                    tmp_loss = 0
+                else:
+                    tmp_loss = tmp_loss.sum().data.cpu().numpy() #/ num_items
+                    #tmp_loss /= b_size
+                floss[k] += tmp_loss #mean should be updated to sum / none and other
+                batch_items[k] += num_items
+
+                self.logger.debug("Evaluator sum loss across losses: {}".format(floss))
+                self.logger.debug("Evaluator Batch total items across losses: {}".format(batch_items))
+
+                self.num_items_loss[k] += batch_items[k] #Add one batch count #data['inp'][0].shape[0]
+                self.logger.debug("Evaluator total ruunning sum of items across batches: {}".format(self.num_items_loss))
+
+                # need to calculate sum weighted by total items in batch
+                self.current_loss[k] = self.current_loss[k] + (floss[k]) 
+
+            # Sum of all loss across batches
+            #self.current_loss = loss
+
+            # Return average loss to this point
+            return [f/i for f, i in zip(self.current_loss, self.num_items_loss)]
+
+
     def __call__(self, data, aggregate = "mean"):
         """Called during training step to get a single loss value and backpropagate"""
         floss = 0
+        batch_items = 0
         #Iterate through all outputs / losses
-        if aggregate not in ("mean", "sum"):
+        if aggregate not in ("mean"):
             raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
+        for k, f in enumerate(self.loss_f):
+            # for each loss, multiply with the mask
+            # Do proper casting based on f_func instance type
+            tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
+            self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
+            b_size = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
+            self.logger.debug(f"Batch size: {b_size}")
+            if tmp_loss.dim() > 1:
+                # label is a sequence of labels not a single label
+                tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
+                tmp_loss = (tmp_loss * data['mask'][k])
+
+                num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
+                self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
+
+                #tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.  Shape: [batch_size, }
+
+                num_items = (num_items * (data['mask'][k] > 0)).sum()
+                self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+            else:
+                tmp_loss = (tmp_loss * data['mask'][k])
+
+                num_items = 1 # Assume each example is 1. will be broadcasted across batch_size
+                self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
+                num_items = (num_items * (data['mask'][k] > 0)).sum()
+                self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+                assert num_items == (data['mask'][k] > 0).sum()
+                #tmp_loss = tmp_loss * num_items
+
+
+            #tmp_loss = (tmp_loss * data['mask'][k])
+            #num_items = (num_items * (data['mask'][k] > 0)).sum()
+            #self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
+            #num_items = num_items
+            tmp_loss = tmp_loss.sum() #/ num_items
+            floss += tmp_loss #mean should be updated to sum / none and other
+            batch_items += num_items
+        return floss / batch_items
+
         for k, f in enumerate(self.loss_f):
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
@@ -189,11 +247,13 @@ class ListEvaluator:
 
 
     def reset(self):
+        # Initialization for metrics
         self.num_items = 0
         self.current_metrics = self.get_initial_loss()
 
-        self.num_items_loss = 0
-        self.current_loss = 0
+        # Initialization for losses
+        self.num_items_loss = [0] * len(self.loss_f) 
+        self.current_loss = [0] * len(self.loss_f)
 
 
     def get_initial_loss(self):

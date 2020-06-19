@@ -7,6 +7,8 @@ import torch
 import os
 import argparse
 import logging
+import pprint
+import yaml
 from experimenter.utils import utils as U
 from pathlib import Path
 from collections import defaultdict
@@ -36,7 +38,7 @@ class BasicTrainer():
         Path(config['out_path']).mkdir(parents=True, exist_ok=True)
         self.logger.info(f"All results will be saved in {config['out_path']}")
         self.batch_size = config['processor']['params']['batch_size']
-
+        self.clip = config['grad_clip'] if 'grad_clip' in self.config.keys() else .25
         # Set up GPU / CPU
         self.gpu_mode = not config['disable_gpu'] and torch.cuda.is_available()
         if self.gpu_mode:
@@ -112,9 +114,58 @@ class BasicTrainer():
             resulting config file after training
         """
 
+        def log(log_time, total_time, epoch, iteration, total_train_loss, prefix=""):
+
+            val_loss = None
+            self.logger.debug("Gradient Norms of last training batch after clipping")
+            for p in list(filter(lambda p: p.grad is not None, self.model.parameters())):
+                    self.logger.debug(p.grad.data.norm(2).item())
+            if not val_batches:
+                self.logger.info(prefix + "Epoch: {}: {}/{} Train duration(s): {:.1f} \t Train loss (~avg over batches): {:.4f}".format(epoch, iteration * self.batch_size, len(train_batches) * self.batch_size, total_time, total_train_loss))
+                results['during_training'][str(i)] = {'train_loss': float(total_train_loss)}
+                self.model.eval()
+                # Predict sample on train
+                train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                self.processor.save_split(train_res, f"train_prediction_{done}")
+            else:
+                self.logger.debug(f"Length of val_batches: {len(val_batches)}")
+                self.model.eval()
+                # Predict sample on train
+                train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                self.processor.save_split(train_res, f"train_prediction_{log_time}")
+                # Predict sample on dev
+                dev_res = self.predict(self.processor.get_data(raw=True)[1][:self.sample_limit])
+                self.processor.save_split(dev_res, f"dev_prediction_{log_time}")
+
+                # Evaluate
+                val_loss = self._evaluate_batches(val_batches) 
+                #train_total_loss = self._evaluate_batches(train_batches)
+                #self.logger.info(f"TRAIN LOSS as batches: {train_total_loss}")
+                val_loss_str = ",".join("{:.4f}".format(v) for v in val_loss) # Need to move to evaluator
+                results['during_training'][str(i)] = {'train_loss': float(total_train_loss), 'val_loss': val_loss_str}
+
+                saved_model = ""
+                if self.evaluator.isbetter(val_loss, self.best_loss, is_metric=False):
+                    self.best_loss = val_loss
+                    # Found best model, save
+                    self.model.save()
+                    results['best'] = results['during_training'][str(i)]
+                    saved_model = " Best model saved"
+                    #self.logger.info("Best model saved at: {}".format(config['out_path']))
+
+                self.logger.info(prefix + "Epoch: {}: {}/{} Train duration(s): {:.1f} \t Train loss (~avg over batches): {:.4f}, validation loss: {} | {}".format(epoch, iteration * self.batch_size, len(train_batches) * self.batch_size, total_time, total_train_loss, val_loss_str, saved_model))
+
+                #self.logger.info("")
+                # Save config
+                with open(self.out_path, 'w') as f:
+                    f.write(U.safe_serialize(config))
+
         # Generate and process data    
         config = self.config
-        self.logger.info(config)
+        config_pretty = pprint.pformat(config)
+        self.logger.info("Configurations:  " + "-" * 50)
+        self.logger.info(config_pretty)
+        self.logger.info("--" * 50)
 
         train_raw = None
         val_batches = None
@@ -131,8 +182,8 @@ class BasicTrainer():
             val_batches_raw = self.processor.get_data(raw=True)[1]
         if len(data) > 2:
             test_batches = data[2]
-
-        self.logger.info(f"Sample Raw example from train")
+            
+        self.logger.info(f"Sample Raw example from train: ")
         self.logger.info(train_raw[0])
         self.logger.info(f"After Encoding:")
         sample_ = self.processor.encode(train_raw[0])
@@ -140,20 +191,22 @@ class BasicTrainer():
         self.logger.info(f"After decoding:")
         sample_ = self.processor.decode(sample_)
         self.logger.info(sample_)
-    
+        self.logger.info("--" * 50)
         #qz1 Start training
-        best_loss = self.evaluator.get_worst_loss()
+        self.best_loss = self.evaluator.get_worst_loss()
         results = config['results']
-        
-        self.logger.info("Starting training:")
+        self.logger.info(f"Training Size: {len(train_batches) * self.batch_size} examples.") 
+        self.logger.info("==" * 50)
+        self.logger.info(" " * 20 + "Starting of Training")
+        self.logger.info("==" * 50)
         for i in range(self.current_epoch + 1, self.current_epoch + self.epochs + 1):
             self.model.train() #Set model to train mode
             total_train_loss = 0
             total_train_batches = 0
             current_epoch = i #needed to track evaluation?
             start = datetime.datetime.now()
-            for b in train_batches:
-                
+            iteration_beg = datetime.datetime.now() 
+            for b_num, b in enumerate(train_batches):
                 #self.logger.debug(b)
                 total_train_batches += 1
                 self.model.zero_grad()
@@ -161,48 +214,32 @@ class BasicTrainer():
                 tloss = self.evaluator(preds)
                 total_train_loss += tloss
                 tloss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip, norm_type=2)
                 self.optimizer.step()
+
+                if b_num * self.batch_size % config['log_interval'] == 0:
+                    iteration_done = datetime.datetime.now()
+                    iter_total_time = (iteration_done - iteration_beg).total_seconds()
+                    self.model.eval()
+                    log(datetime.datetime.now().strftime('%m-%d %H:%M'), iter_total_time, i, b_num + 1, total_train_loss / total_train_batches )
+                    iteration_beg = datetime.datetime.now() 
+                    self.model.train() #Set model to train mode
+                        
 
             done = datetime.datetime.now()
             epoch_time = (done - start).total_seconds()
             
             # Need to dynamically decide if avg of loss is needed or sum
-            total_train_loss /= (total_train_batches * self.batch_size) #This will break when loss is changed between mean / sum. Might be slightly off if last batch is not dropped and has size != to batch_size
-            if i % config['log_interval'] == 0:
-                val_loss = None
-                if not val_batches:
-                    self.logger.info("Epoch: {}: Duration(s): {} Train loss (avg over data): {}".format(i, epoch_time, total_train_loss))
-                    results['during_training'][str(i)] = {'train_loss': float(total_train_loss)}
-                    self.model.eval()
-                    # Predict sample on train
-                    train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
-                    self.processor.save_split(train_res, f"train_prediction_{done}")
-                else:
-                    self.logger.debug(f"Length of val_batches: {len(val_batches)}")
-                    self.model.eval()
-                    # Predict sample on train
-                    train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
-                    self.processor.save_split(train_res, f"train_prediction_{done}")
-                    # Predict sample on dev
-                    dev_res = self.predict(self.processor.get_data(raw=True)[1][:self.sample_limit])
-                    self.processor.save_split(dev_res, f"dev_prediction_{done}")
+            total_train_loss /= (total_train_batches) #This will break when loss is changed between mean / sum. Might be slightly off if last batch is not dropped and has size != to batch_size
+            self.logger.info("-" * 50)
+            self.model.eval()
+            log(done.strftime('%m-%d %H:%M'), epoch_time, i, b_num + 1, total_train_loss, prefix="END OF EPOCH | ")
+            self.logger.info("-" * 50)
+            self.model.train()
 
-                    # Evaluate
-                    val_loss = self._evaluate_batches(val_batches) 
-                    val_loss_str = ",".join(str(v) for v in val_loss) # Need to move to evaluator
-                    self.logger.info("Epoch: {}: Duration(s): {} Train loss (avg over data): {}, validation loss: {}".format(i, epoch_time, total_train_loss, val_loss_str))
-                    results['during_training'][str(i)] = {'train_loss': float(total_train_loss), 'val_loss': val_loss_str}
-    
-                    if self.evaluator.isbetter(val_loss, best_loss, is_metric=False):
-                        best_loss = val_loss
-                        # Found best model, save
-                        self.model.save()
-                        results['best'] = results['during_training'][str(i)]
-                        self.logger.info("Best model saved at: {}".format(config['out_path']))
-
-                    # Save config
-                    with open(self.out_path, 'w') as f:
-                        f.write(U.safe_serialize(config))
+        self.logger.info("==" * 50)
+        self.logger.info(" " * 20 + "End of Training")
+        self.logger.info("==" * 50)
         
         if test_batches is not None:
             self.model.eval() #Set model to train mode

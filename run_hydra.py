@@ -6,21 +6,24 @@ import logging
 from experimenter.training import BasicTrainer
 import hydra
 from omegaconf import DictConfig
-
-def setup_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config_file", type=str, default=None, required=True, help="Configuration file to load parameters from. If other parameters are passed they\
-                        will override whatever in config file")
-    parser.add_argument("--data_path", type=str, default=None, required=False, help="If provided, will override the data path")
-    parser.add_argument("--experiment_name", type=str, default=None, required=False, help="If provided, will override experiment name")
-    parser.add_argument("--logging_level", type=int, default=logging.INFO, help="Level of logging according to logging package. Default is INFO")
-    return parser.parse_known_args()
+from omegaconf import OmegaConf
 
 
-@hydra.main(config_path="config.yaml")
-def my_app(cfg : DictConfig) -> None:
-    print(cfg.pretty())
-    print(type(cfg.db.splits))
 
 if __name__ == "__main__":
+    # Find the argument for yaml_file=some_path
+    for ar in sys.argv:
+        if ar.split('=')[0] == 'yaml_file':
+            path = ar.split('=')[1]
+            break
+    # Define hydra calling method 
+    @hydra.main(config_path=path, strict=False)
+    def my_app(cfg : DictConfig) -> None:
+        print(hydra.utils.get_original_cwd())
+        print(cfg.pretty())
+        as_dict = OmegaConf.to_container(cfg, resolve=False)
+        trainer = BasicTrainer(as_dict)
+        trainer()
+
+    # Call traininer through hydra and let hydra parse the arguments
     my_app()
