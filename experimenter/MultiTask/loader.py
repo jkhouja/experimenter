@@ -1,6 +1,64 @@
 import os
 import pandas as pd
 
+
+class Dummy():
+    """Dummy data generator that generates LM data based on 2 simple sentences and 2 classes"""
+    def __init__(self, root_path, data_size, lm_label, cls_label):
+        self.beg_sym = "<s> "
+        self.end_sym = " <e>"
+        self.lm_label = lm_label
+        self.cls_label = cls_label
+        self.data_size = data_size
+
+        
+    def __call__(self):
+        out = []
+        # Each record is a touple of [sentence] , {label1: [labels], label2: [labels]})
+        s = "one two three four"
+        b = "five six seven eight nine"
+
+        for i in range(self.data_size // 2):
+            out.append(([self.beg_sym + s], {self.lm_label: s + self.end_sym, self.cls_label: [0]}))
+            out.append(([self.beg_sym + b], {self.lm_label: b + self.end_sym, self.cls_label: [1]}))
+
+        return [out]
+
+class LMTextFile():
+    
+    def __init__(self, root_path, input_paths, label_name, break_line_at, beg_sym="<s> ", end_sym=" <e>",  limit=None):
+        self.input_paths = [os.path.join(root_path, input_path) for input_path in input_paths]
+        self.label_name = label_name
+        self.beg_sym = beg_sym
+        self.end_sym = end_sym
+        self.limit = limit
+        self.seq_len = break_line_at
+
+    def __call__(self):
+        out = []
+        for path in self.input_paths:
+            data = []
+            with open(path, 'r') as f:
+                word_in_line = 0
+                sent = []
+                for i, line in enumerate(f.readlines()):
+                    if i == self.limit:
+                        break
+                    if line.strip() != "":
+                        for word in line.strip().split():
+                            sent.append(word)
+                            word_in_line += 1
+                            if self.seq_len is not None and word_in_line == self.seq_len -1: 
+                                #We reached the end of sequence, add to output and restart
+                                tmp = ([self.beg_sym + " ".join(sent)], {self.label_name: " ".join(sent) + self.end_sym})
+                                data.append(tmp)
+                                sent = []
+                                word_in_line = 0
+
+                out.append(data)
+
+        return out
+
 class LMCSV():
     """A class that takes a csv file (usually saved by pandas) and a inp_col name and create a LM tuple record:
     (sentence, {label_name: sentence_out})

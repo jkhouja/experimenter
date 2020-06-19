@@ -1,9 +1,9 @@
-{"epochs": 100,
+{"epochs": 5,
     "experiment_name": "MultiTaskModeling",
       
       "experiment_output_file": "results.json",
       "model_path": "model.state",
-      "log_interval": 2, 
+      "log_interval": 200, 
       "disable_gpu": false,
       "do_train": true,
       "do_predict": true,
@@ -14,27 +14,18 @@
        "params":{
            "loaders": [
                {"module": "experimenter.MultiTask.loader",
-                 "class": "ClassCSV",
-                 "params":{"input_paths": ["clean_agreement_3annotations.csv"],
-                           "inp_col": "s1",
-                           "out_col": "stance",
-                           "label_name": "label",
-                           "limit": 400
-                          }},
-               {"module": "experimenter.MultiTask.loader",
-                 "class": "LMCSV",
-                 "params":{"input_paths": ["clean_agreement_3annotations.csv" ],
-                           "inp_col": "s1",
-                           "label_name": "lm",
-                           "limit": 2000
+                 "class": "Dummy",
+                 "params":{
+                           "lm_label": "lm",
+                           "cls_label": "label",
+                           "data_size": 600
                           }}
-
                       ],
            "separator": " ",
            "max_vocab_size" : 3000,
            "min_vocab_count": 10,
            "input_path": "", 
-           "task_order": [1,0],
+           "task_order": [0],
            "label_indx" : {"lm":0, "label":1},
            "label_encoder": ["text", "class"],
            "mask_weights": [1,1],
@@ -49,8 +40,8 @@
     "model":{
          "module": "experimenter.MultiTask.modeling",
          "class": "Seq2Seq",
-         "params":{"embedding_dim": 50, 
-                   "hidden_dim": 300, 
+         "params":{"embedding_dim": 20, 
+                   "hidden_dim": 40, 
                    "dropout": 0, 
                    "vocab_size": {"eval": 1, "value":"config['processor']['params']['vocab_size']"},
                    "num_classes": {"eval": 1, "value":"config['processor']['params']['num_classes']"},  

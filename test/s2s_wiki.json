@@ -1,0 +1,65 @@
+{"epochs": 100,
+    "experiment_name": "MultiTaskModeling",
+      
+      "experiment_output_file": "results.json",
+      "model_path": "model.state",
+      "log_interval": 2, 
+      "disable_gpu": false,
+      "do_train": true,
+      "do_predict": true,
+  "root_path": "/Users/jkhouja/workspace/experiments/wikitext-2/", 
+   "processor":{
+    "module": "experimenter.MultiTask.data",
+    "class": "MultiTaskProvider",
+       "params":{
+           "loaders": [
+               {"module": "experimenter.MultiTask.loader",
+                 "class": "LMTextFile",
+                 "params":{"input_paths": ["data/train.txt", "data/valid.txt", "data/test.txt"],
+                           "label_name": "lm",
+                           "limit": 1000,
+                           "break_line_at": 20
+                           }
+                          }
+                      ],
+           "separator": " ",
+           "max_vocab_size" : 3000,
+           "min_vocab_count": 10,
+           "input_path": "", 
+           "task_order": [0],
+           "label_indx" : {"lm":0},
+           "label_encoder": ["text"],
+           "mask_weights": [1],
+           "seq_len": {"inp":[20], 
+                       "label":[20],
+                       "mask":[1]}, 
+         "batch_size": 4, 
+         "splits": [0.7, 0.2, 0.1], 
+         "drop_last":true,  
+         "shuffle": true, 
+         "vocab_path": "vocab.json"}},
+    "model":{
+         "module": "experimenter.MultiTask.modeling",
+         "class": "Seq2Seq",
+         "params":{"embedding_dim": 20, 
+                   "hidden_dim": 40, 
+                   "dropout": 0, 
+                   "vocab_size": {"eval": 1, "value":"config['processor']['params']['vocab_size']"},
+                   "num_classes": {"eval": 1, "value":"config['processor']['params']['num_classes']"},  
+                   "inp_seq_len": {"eval": 1, "value": "config['processor']['params']['seq_len']['inp']"},
+                  "out_seq_len": {"eval": 1, "value": "config['processor']['params']['seq_len']['label']"}}},
+    
+     "evaluator":{
+         "module": "experimenter.evaluation",
+         "class": "ListEvaluator",
+         "params": {"loss_f": [{"module": "torch.nn", "class": "CrossEntropyLoss", "params": {"reduction": "none"}}],
+                   "metrics_f": [{"module": "experimenter.evaluation", "class": "Accuracy", "params": {}}]}},
+     "optimizer":{
+         "module": "torch.optim",
+         "class": "Adam",
+         "params":{
+             "params": {
+             "eval": 1,
+             "value": "config['model']['model'].parameters()"},
+         "lr":  0.001}}
+    }

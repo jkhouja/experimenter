@@ -1,0 +1,14 @@
+defaults:
+  - model: seq2seq
+  - optimizer: adam
+  - task/lm_class.yaml
+experiment_name: MultiTaskModeling
+root_path: /Users/jkhouja/workspace/experiments/arabic_media/data/clean
+experiment_output_file: results.json
+device: cpu
+disable_gpu: false
+do_train: true
+do_predict: true
+epochs: 5
+log_interval: 200
+grad_clip: .000

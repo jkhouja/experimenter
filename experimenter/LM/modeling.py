@@ -42,11 +42,11 @@ class RNNLMModel(BaseModel):
 
         output = self.linear(s1_all_hidden[0])
         output = output.permute(0,2,1)
-        prediction = self.sm(output)
+        #prediction = self.sm(output)
     
         res = []
         try:
-            res.extend([s.argmax(dim=1, keepdim=True) for s in output])
+            res.extend([output.argmax(dim=1, keepdim=False)])
         except IndexError as e:
             # batch_size = 1 or last batch
             res.extend([[s.argmax() for s in output]])
@@ -54,6 +54,6 @@ class RNNLMModel(BaseModel):
 
         input_batch['out'] = [output]
         input_batch['pred'] = res
-        input_batch['meta'] = [prediction]
+        input_batch['meta'] = [output]
         return input_batch
 
