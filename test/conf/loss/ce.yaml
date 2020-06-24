@@ -1,6 +1,0 @@
-loss_f:
-- class: CrossEntropyLoss
-    module: torch.nn
-    params:
-    ignore_index: 0
-    reduction: none

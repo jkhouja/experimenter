@@ -4,6 +4,7 @@ from azureml.core import Workspace
 from azureml.train.dnn import PyTorch
 from azureml.core.runconfig import RunConfiguration
 from azureml.core import ScriptRunConfig
+from azureml.data.data_reference import DataReference        
 import os 
 import sys
 from azureml.core import Experiment
@@ -34,7 +35,8 @@ if __name__ == "__main__":
         print(cfg.pretty())
         args_dict = OmegaConf.to_container(cfg, resolve=False)
         
-        conf_file = os.path.join(args_dict['root_path'], str(datetime.datetime.now()) + ".json")
+        yaml_file_nm = args_dict['yaml_file'].split("/")[-1].split(".")[0]
+        conf_file = os.path.join(args_dict['root_path'], yaml_file_nm + "_" + str(datetime.datetime.now()) + ".json")
         print(conf_file)
 
         with open(conf_file, 'w') as out:
@@ -47,6 +49,7 @@ if __name__ == "__main__":
         disable_gpu = args_dict['disable_gpu']
         script_folder = "." #todo. this is overriden by hydra
         script_folder = hydra.utils.get_original_cwd() #todo. this is overriden by hydra
+        data_path = os.path.join(args_dict['root_path'], args_dict['data_subdir'])
 
         sub_id = os.getenv('AZ_SUBS_ID')
         assert sub_id is not None
@@ -82,8 +85,10 @@ if __name__ == "__main__":
         
         
         s = ws.get_default_datastore()
-        azure_data_path = s.upload(src_dir=args_dict['root_path'],
-                        target_path=args_dict['root_path'],
+
+        # A reference to the root_path in azure after uplaoding
+        azure_data_path = s.upload(src_dir=data_path,
+                        target_path=data_path,
                         overwrite=False,
                         show_progress=True)
 
@@ -93,18 +98,33 @@ if __name__ == "__main__":
         #script_fname = args.config_file.split("/")[-1]
         script_fname = conf_file.split("/")[-1]
         print(script_fname)
-        azure_script_path = s.upload(script_target_path,
-                        target_path=script_fname,
+        print("---" * 100)
+
+
+        azure_script_path = s.upload_files(files=[conf_file],
+                        target_path=script_target_path,
                         overwrite=True,
                         show_progress=True)
+
+        print(azure_script_path)
+
+        azure_script_abs_path = DataReference(
+                                datastore=s,
+                                data_reference_name="input_data",
+                                path_on_datastore=conf_file)
+
+        azure_root_path = DataReference(
+                                datastore=s,
+                                data_reference_name="root_data",
+                                path_on_datastore=args_dict['root_path'])
         
         exp = Experiment(workspace=ws, name=experiment_name)
         #src = ScriptRunConfig(source_directory = script_folder, script = 'run.py', arguments=['--config_file', 'local/pairs.json'],  run_config = run_temp_compute)
         
         # Using pytorch estimator - proper way to submit pytorch jobs
         script_params = {
-            '--config_file': azure_script_path, 
-            '--data_path': azure_data_path,
+            '--config_file': azure_script_abs_path, 
+            '--root_path': azure_root_path, 
             '--experiment_name': experiment_name
         }
 

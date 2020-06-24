@@ -113,7 +113,7 @@ class ListEvaluator:
                     tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
                     tmp_loss = (tmp_loss * data['mask'][k])
 
-                    num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
+                    num_items = (data['label'][k] > 0).type(torch.DoubleTensor).to(self.device).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
                     self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
 
                     #tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.  Shape: [batch_size, }
@@ -123,7 +123,7 @@ class ListEvaluator:
                 else:
                     tmp_loss = (tmp_loss * data['mask'][k])
 
-                    num_items = 1 # Assume each example is 1. will be broadcasted across batch_size
+                    num_items = torch.tensor(1).type(torch.DoubleTensor).to(self.device) # Assume each example is 1. will be broadcasted across batch_size
                     self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
                     num_items = (num_items * (data['mask'][k] > 0)).sum()
                     self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
@@ -178,17 +178,16 @@ class ListEvaluator:
                 tmp_loss = tmp_loss.sum(dim=1) #sum over the sequence length resulting in [batch_num,]
                 tmp_loss = (tmp_loss * data['mask'][k])
 
-                num_items = (data['label'][k] > 0).type(torch.DoubleTensor).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
+                num_items = (data['label'][k] > 0).type(torch.DoubleTensor).to(self.device).sum(dim=1) #Override num_items to be actual tokens TODO: replace 0 with ignore index
                 self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
 
                 #tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.  Shape: [batch_size, }
-
                 num_items = (num_items * (data['mask'][k] > 0)).sum()
                 self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")
             else:
                 tmp_loss = (tmp_loss * data['mask'][k])
 
-                num_items = 1 # Assume each example is 1. will be broadcasted across batch_size
+                num_items = torch.tensor(1).type(torch.DoubleTensor).to(self.device) # Assume each example is 1. will be broadcasted across batch_size
                 self.logger.debug(f"Number of tokens in all sequences in batch: {num_items}")
                 num_items = (num_items * (data['mask'][k] > 0)).sum()
                 self.logger.debug(f"Number of tokens after multiplying with mask: {num_items}")

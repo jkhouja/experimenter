@@ -28,9 +28,13 @@ class BaseModel(torch.nn.Module):
         # Print statistics
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         self.logger.info("Total learnable params: {}".format(total_params))
-        self.logger.debug("Learnable parameters details")
+        self.logger.debug(f"Learnable parameters details for model: {self.__class__}")
         for param in self.parameters():
-            self.logger.debug(type(param.data), param.size())
+            self.logger.debug(f"Parameter: type={param.type()} shape={param.shape} name={param.name}")
+        self.logger.debug(f"Retruning parameters using named_parameters()")
+        for name, param in self.named_parameters():
+            self.logger.debug(f"Parameter: name={name} type={param.type()} shape={param.shape} param.name={param.name}")
+            
 
 
     def initialize_h(self, batch_size):

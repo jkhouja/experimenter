@@ -21,32 +21,38 @@ class LMProvider(DataProvider):
 
         enc = text.Encoder(update_vocab=True, no_special_chars=False)
         #label_enc = text.Encoder(update_vocab=True, no_special_chars=True)
+        as_is = U.chainer(funcs=[lambda x:  x])
 
         self.encoder = {}
         self.encoder['inp'] = [U.chainer(funcs=[cleaner, char_tokenizer, enc])]
         self.encoder['label'] = self.encoder['inp']
         self.encoder['pred'] = self.encoder['inp']
-        self.encoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
+        self.encoder['mask'] = [as_is]
         self.encoder['out'] = self.encoder['mask']
-        self.encoder['meta'] = self.encoder['mask']
+        self.encoder['meta'] = as_is
 
         self.decoder = {}
         self.decoder['inp'] = [U.chainer(funcs=[enc.decode, char_tokenizer.detokenize])]
         self.decoder['label'] = self.decoder['inp']
         self.decoder['pred'] = self.decoder['inp']
-        self.decoder['mask'] = [U.chainer(funcs=[lambda x:  x])]
-        self.decoder['out'] = self.decoder['mask']
-        self.decoder['meta'] = self.decoder['mask']
+        self.decoder['mask'] = [as_is]
+        self.decoder['out'] = [as_is]
+        self.decoder['meta'] = as_is
 
         # Process data
         raw_data = self.upload_data()
-        s = self.__call__(raw_data, list_input=True)
+        raw_data = self._create_splits(raw_data)
+        s = [self.__call__(d, list_input=True) for d in raw_data]
         enc.freeze()
-        self.sample_data = raw_data[1]
         config['processor']['params']['vocab_size'] = len(enc.vocab) #Needs changing, we might have multiple vocabs
-        d = self._create_splits(s)
-        self.data_raw = d
-        self.data = tuple([self._to_batches(split) for split in d])
+        config['processor']['params']['padding_indx'] = enc.get_padding_indx()
+
+        self.data_raw = raw_data
+        self.data = tuple([self._to_batches(split) for split in s])
+        self.sample_data_raw = self.data_raw[0][1]
+        self.sample_data_processed = s[0][1]
+
+
 
     def upload_data(self,  **kwargs) -> List[Tuple[List[Union[List[int],int]], List[Union[List[int],int]], List[int]]]:
         """Read data file and returns list of sentences with S and E symbols

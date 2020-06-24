@@ -34,7 +34,9 @@ class BasicTrainer():
         self.epochs = config['epochs']
         self.sample_limit = config.get('sample_limit') or 10
         config['out_path'] = os.path.join(config['root_path'], "results", config['experiment_name'], "_".join((datetime.datetime.now().strftime("%b_%d_%Y_%H_%M_%S_%f"), f"{random.random() * 10000:4.0f}".strip())))
+        config['data_path'] = os.path.join(config['root_path'], config['data_subdir'])
         self.out_path = os.path.join(config['out_path'], config['experiment_output_file']) 
+        self.data_path = config['data_path']
         Path(config['out_path']).mkdir(parents=True, exist_ok=True)
         self.logger.info(f"All results will be saved in {config['out_path']}")
         self.batch_size = config['processor']['params']['batch_size']
@@ -126,16 +128,16 @@ class BasicTrainer():
                 self.model.eval()
                 # Predict sample on train
                 train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
-                self.processor.save_split(train_res, f"train_prediction_{done}")
+                self.processor.save_split(train_res, f"train_prediction_{epoch}_{iteration}")
             else:
                 self.logger.debug(f"Length of val_batches: {len(val_batches)}")
                 self.model.eval()
                 # Predict sample on train
                 train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
-                self.processor.save_split(train_res, f"train_prediction_{log_time}")
+                self.processor.save_split(train_res, f"train_prediction_{epoch}_{iteration}")
                 # Predict sample on dev
                 dev_res = self.predict(self.processor.get_data(raw=True)[1][:self.sample_limit])
-                self.processor.save_split(dev_res, f"dev_prediction_{log_time}")
+                self.processor.save_split(dev_res, f"dev_prediction_{epoch}_{iteration}")
 
                 # Evaluate
                 val_loss = self._evaluate_batches(val_batches) 

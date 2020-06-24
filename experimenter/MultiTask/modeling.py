@@ -174,7 +174,7 @@ class Seq2Seq(BaseModel):
         self.lstm = torch.nn.LSTM(input_size=self.embedding_dim, hidden_size=self.hidden_dim, dropout=self.dropout, batch_first=True)
 
         # For each output
-        self.out_decoder = []
+        self.out_decoder = torch.nn.ModuleList()
         for i in range(self.num_outputs):
             if self.encoders[i] == "text":
             
@@ -184,7 +184,9 @@ class Seq2Seq(BaseModel):
 
         # Used to normalize all output (seq and class)
         self.sm = torch.nn.Softmax(dim=1)
-        self.sos_vec = torch.tensor([[0]] * self.batch_size, dtype=torch.long)
+
+        # Create a tensor to represent beginning symbol for decoder to start decoding
+        self.sos_vec = torch.tensor([[0]] * self.batch_size, dtype=torch.long).to(self.device)
 
         # Print statistics
         self.initialize()
@@ -225,6 +227,7 @@ class Seq2Seq(BaseModel):
         output = []
         for i in range(self.num_outputs):
             logging.debug(f"Shape of output layer for output number: {i}")
+
             if self.encoders[i] == "text":
                 #seq prediction task. Output for output_seq_len starting from last state
                 teacher_labels = torch.cat((self.sos_vec, inp_text[:,:-1]), 1)
@@ -234,6 +237,7 @@ class Seq2Seq(BaseModel):
                 output.append(lm_prediction)
                 
             elif self.encoders[i] == "class":
+                self.logger.debug(f"Device of s1_last_state: {s1_last_state.device}")
                 # A single class prediction
                 cls_output = self.out_decoder[i](s1_last_state).squeeze()
                 #cls_output = self.sm(cls_output)

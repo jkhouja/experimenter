@@ -21,7 +21,7 @@ class DataProvider(object):
         self.drop_last = self.args['drop_last']
         self.seq_len = self.args['seq_len']
         self.splits = self.args['splits']
-        self.input_path = [os.path.join(config['root_path'], path) for path in self.args['input_path']]
+        self.input_path = [os.path.join(config['data_path'], path) for path in self.args['input_path']]
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def save_split(self, split: list, split_name: str) -> None:
@@ -114,12 +114,12 @@ class DataProvider(object):
         res = dict()
         for key in model_output.keys():
             res[key] = []
+            self.logger.debug(f"Decoding key: {key}")
             if key == "meta":
                 # For the meta keys, we don't have decoder per feature rather it's passed as is.
                 res[key].append(self.decoder[key](model_output[key]))
                 continue
             for i, feat in enumerate(model_output[key]):
-                self.logger.debug(f"Decoding key: {key}")
                 res[key].append(self.decoder[key][i](feat, list_input=False))
 
         return res
