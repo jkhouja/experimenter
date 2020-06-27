@@ -1,0 +1,33 @@
+{"epochs": 3,
+           "experiment_name": "MultiTaskTest",
+            "root_path" : "/Users/jkhouja/workspace/repo/latynt/experimenter/test/",
+            "experiment_output_file": "results.json",
+            "model_path": "model.state",
+            "log_interval": 1,
+            "do_train": true,
+            "do_predict": false,
+            "disable_gpu": false,
+           "processor": {
+                "module": "experimenter.MultiLMPairClassification.data",
+                "class": "MultiLMPairProvider",
+                "params":{"input_path": ["arabic_sample_data.csv"],
+                          "seq_len": {"inp":[10, 10], "label":[10, 1],"mask":[1, 1]}, "batch_size": 4, "splits": [0.7, 0.2, 0.1], "drop_last":true,  "shuffle": true, "vocab_path": "vocab.json"}},
+           "model":{
+                "module": "experimenter.MultiLMPairClassification.modeling",
+                "class": "RNNMultiLMPairModel",
+                "params":{"embedding_dim": 20, "hidden_dim": 100, "dropout": 0, "lm_classes": {"eval": 1, "value":"config['processor']['params']['vocab_size']"},  "num_classes":3 , "max_seq_len": {"eval": 1, "value": "config['processor']['params']['seq_len']['inp'][0]"}}},
+           
+            "evaluator":{
+                "module": "experimenter.evaluation",
+                "class": "ListEvaluator",
+                "params": {"loss_f": [{"module": "torch.nn", "class": "CrossEntropyLoss", "params": {"reduction": "none"}}, {"module": "torch.nn", "class": "CrossEntropyLoss", "params": {"reduction": "none"}}],
+                          "metrics_f": [{"module": "experimenter.evaluation", "class": "Dummy", "params": {}}, {"module": "experimenter.evaluation", "class": "Accuracy", "params": {}}]}},
+            "optimizer":{
+                "module": "torch.optim",
+                "class": "Adam",
+                "params":{
+                    "params": {
+                    "eval": 1,
+                    "value": "config['model']['model'].parameters()"},
+                "lr":  0.001}}
+           }
