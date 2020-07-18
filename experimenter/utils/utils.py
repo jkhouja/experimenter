@@ -28,15 +28,24 @@ def list_applyer(func):
             return res
     return decorated
 
+def list_applyer(func):
+    """Decorator that applies the decorated function to each item of input_data"""
+    def decorated(self, input_data, list_input=False, **kwargs):
+        if not list_input:
+            return func(self, input_data, **kwargs)
+        else:
+            return func(self, input_data, list_input=True, **kwargs)
+    return decorated
+
 class chainer:
     """Chain applies the functions in sequence"""
     def __init__(self, funcs):
         self._funcs = funcs
     
-    @list_applyer
-    def __call__(self, data):
+    #@list_applyer
+    def __call__(self, data, list_input=False):
         for func in self._funcs:
-            data = func(data)
+            data = func(data, list_input)
         return data
 
 def move_batch(batch, device):

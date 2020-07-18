@@ -230,8 +230,8 @@ class Seq2Seq(BaseModel):
 
             if self.encoders[i] == "text":
                 #seq prediction task. Output for output_seq_len starting from last state
-                teacher_labels = torch.cat((self.sos_vec, inp_text[:,:-1]), 1)
-                assert teacher_labels.shape == inp_text.shape
+                teacher_labels = torch.cat((self.sos_vec, input_batch['label'][i][:,:-1]), 1)
+                #assert teacher_labels.shape == inp_text.shape
                 lm_prediction = self.out_decoder[i](teacher_labels, first_hidden=s1_last_hidden)
                 logging.debug(lm_prediction.shape)
                 output.append(lm_prediction)

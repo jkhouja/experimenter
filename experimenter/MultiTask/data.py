@@ -6,36 +6,12 @@ import random
 import logging
 from typing import List, Tuple, Union, Any 
 from experimenter.utils import text
+from experimenter.utils import pipeline
 from experimenter.utils import utils as U
-from experimenter.data import DataProvider, DictDataset
+from experimenter.data import DataProvider, DictDataProvider, DictDataset
 from .loader import ClassCSV, LMCSV
 
-class TextPipeline():
-    def __init__(self, sep, max_vocab_size, min_vocab_count):
-        cleaner = text.clean_text()
-        tokenizer = text.tokenizer(sep=sep)
-        enc = text.Encoder(update_vocab=True, no_special_chars=False, max_vocab_size=max_vocab_size, min_vocab_count=min_vocab_count)
-        self.enc = enc
-        self.encoder = U.chainer(funcs=[cleaner, tokenizer, enc])
-        self.decoder = U.chainer(funcs=[enc.decode, tokenizer.detokenize])
-        self.num_classes = enc.vocab
-
-    def get_num_classes(self):
-        return len(self.enc.vocab)
-
-class ClassPipeline():
-    def __init__(self):
-        class_enc = text.Encoder(update_vocab=True, no_special_chars=True)
-        self.enc = class_enc
-        self.encoder = U.chainer(funcs=[class_enc])
-        self.decoder = U.chainer(funcs=[class_enc.decode])
-
-    def get_num_classes(self):
-        return len(self.encoder._funcs[0].vocab)
-        
-
-
-class MultiTaskProvider(DataProvider):
+class MultiTaskProvider(DictDataProvider):
     """A multi-task class that takes list of tasks (with single input) and joins them"""
     def __init__(self, config):
         super(MultiTaskProvider, self).__init__(config) 
@@ -51,21 +27,20 @@ class MultiTaskProvider(DataProvider):
         self.num_labels = len(self.label_indx)
         self.max_vocab_size = config['processor']['params']['max_vocab_size']
         self.min_vocab_count = config['processor']['params']['min_vocab_count']
- 
 
         # Loaders
         self.loaders = []
         for l in config['processor']['params']['loaders']: 
             # bad, this should be passed in a better way
-            l['params']['root_path'] = config['root_path']
+            l['params']['data_path'] = config['data_path']
             self.loaders.append(U.load_class(l['module'], l['class'], l['params'], pass_params_as_dict=True))
 
         
         # Text pipeline
-        text_pipe = TextPipeline(sep=self.sep, max_vocab_size=self.max_vocab_size, min_vocab_count=self.min_vocab_count)
+        text_pipe = pipeline.TextPipeline(sep=self.sep, max_vocab_size=self.max_vocab_size, min_vocab_count=self.min_vocab_count)
         # Labels pipeline
 
-        as_is = U.chainer(funcs=[lambda x:  x])
+        as_is = U.chainer(funcs=[lambda x, list_input:  x])
 
         self.encoder = {}
         self.decoder = {}
@@ -90,7 +65,7 @@ class MultiTaskProvider(DataProvider):
                 self.decoder['pred'].append(text_pipe.decoder)
             elif l == "class":
                 self.logger.info("Adding class encoder")
-                cls_pipe = ClassPipeline() 
+                cls_pipe = pipeline.ClassPipeline() 
                 self.pipelines.append(cls_pipe)
                 self.encoder['label'].append(cls_pipe.encoder)
                 self.decoder['label'].append(cls_pipe.decoder)
@@ -108,7 +83,7 @@ class MultiTaskProvider(DataProvider):
 
         self.decoder['mask'] = [as_is for _ in range(self.num_labels)]
         self.decoder['out'] = [as_is for _ in range(self.num_labels)]
-        self.decoder['meta'] = as_is 
+        self.decoder['meta'] = [as_is] 
 
         # Process data
         raw_data = self.upload_data()
@@ -117,7 +92,10 @@ class MultiTaskProvider(DataProvider):
         #text_pipe.enc.build_vocab(raw_data)
 
         self.logger.info(f"Splits: {len(raw_data)}")
+        
 
+        #print(raw_data[0])
+        # Process data
         s = [self.__call__(d, list_input=True) for d in raw_data]
 
         text_pipe.enc.filter_vocab()
@@ -142,8 +120,11 @@ class MultiTaskProvider(DataProvider):
         self.data_raw = raw_data
         self.data = tuple([self._to_batches(split) for split in s])
 
-        self.sample_data_raw = raw_data[0][1]
-        self.sample_data_processed = s[0][1]
+        #self.sample_data_raw = raw_data[0][1]
+        self.sample_data_raw = self.get_sample(0)
+        print(self.sample_data_raw)
+
+        #self.sample_data_processed = s[0][1]
         config['processor']['params']['vocab_size'] = len(text_pipe.enc.vocab) #Needs changing, we might have multiple vocabs
         self.logger.info(f"Vocab size: {len(text_pipe.enc.vocab)}")
         self.logger.info("First 10 vocab words:")
@@ -163,7 +144,8 @@ class MultiTaskProvider(DataProvider):
                 data = []
                 for ins, outs in split:
                     tmp = self._get_empty()
-                    tmp['inp'] = ins
+                    # TODO: Expand to multiple inputs
+                    tmp['inp'][0] = ins
                     # outs is a dictionary of task_string and it's labels
                     for labl, val in outs.items():
                         tmp['label'][self.label_indx[labl]] = val
@@ -186,37 +168,48 @@ class MultiTaskProvider(DataProvider):
             #Data loaded has a single split, check if needs to generate train/dev/text/etc.
             self.logger.info("Loaded one split")
             splits = self._create_splits(splits[0])
+
+        if self._as_dict():
+            splits = self._convert_to_dict(splits)
+
         return splits
 
+    def get_sample(self, indx, size=1, split=0, raw=True):
+        sample_data_raw = {}
+        if raw:
+            for key in self.data_raw[split].keys():
+                sample_data_raw[key] = []
+                for feat in self.data_raw[split][key]:
+                    sample_data_raw[key].append(feat[indx:indx+size])
+        else:
+            for key in self.data[split].keys():
+                sample_data_raw[key] = []
+                for feat in self.data[split][key]:
+                    sample_data_raw[key].append(feat[indx:indx+size])
+            
+        return sample_data_raw
+
     def _get_empty(self):
-        return {"inp": [], "label": [[] for _ in range(self.num_labels)], "mask": [0 for _ in range(self.num_labels)]}
+        # TODO: Expand input to list of inputs
+        return {"inp": [[]], "label": [[] for _ in range(self.num_labels)], "mask": [[] for _ in range(self.num_labels)]}
 
-    def unused(self):
+    def _as_dict(self):
+        return True
 
-        # This is bad since the splits might not contain proportional data for all tasks
-
-        data_in = pd.read_csv(self.input_path[0]) 
-        data_in['stance'] = data_in['stance'].astype(str)
-
-        self.logger.info("All loaded data size:{}".format(data_in.shape[0]))
-
-        splits = self._create_splits(data_in.to_dict(orient='records'))
-        out = []
+    def _convert_to_dict(self, splits):
+        
+        as_dict_splits = []
         for split in splits:
-            data_in = split
-
-            f = lambda x: "S" + x + "E"
-            s1_data = [f(x['s1']) for x in data_in]
-            s2_data = [f(x['s2']) for x in data_in]
-            labels = [x['stance'] for x in data_in]
-
-            data = [{'inp':[d2[:-2], d[:-2]], 'label':[d2[1:], [l]], 'mask':[1, 0]} for d, d2, l in zip(s1_data, s2_data, labels)]
-
-            #data = []
-
-            data.extend([{'inp':[d[:-2], d2[:-2]], 'label':[d[1:], [l]], 'mask':[1,150]} for d, d2, l in zip(s1_data, s2_data, labels)])
-        #data.extend([{'inp':[d2[:-2], d2[:-2]], 'label':[d2[1:], ["agree"]], 'mask':[1,70]} for d, d2, l in zip(s1_data, s2_data, labels)])
-            out.append(data)
-
-        return out
+            #tmp = {'inp': [], 'label': [], 'mask':[]}
+            tmp = self._get_empty()
+            for example_dict in split:
+                for key in example_dict.keys():
+                    for i, feat in enumerate(example_dict[key]):
+                        #if isinstance(feat, list):
+                        tmp[key][i].append(feat)
+                        #else:
+                        #Case of mask:
+                        #    tmp[key].append(feat)
+            as_dict_splits.append(tmp)
+        return as_dict_splits
 

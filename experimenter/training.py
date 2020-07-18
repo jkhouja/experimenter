@@ -72,11 +72,14 @@ class BasicTrainer():
         """
         assert len(data) > 1
         data_as_batches = self.processor(data, list_input=True, as_batches=True)
-        res = []
-        for i, batch in enumerate(data_as_batches):
-            #res.extend(self.model(U.move_batch(batch, self.device)))
-            res.extend(self.processor._from_batch(self.model(U.move_batch(batch, self.device))))
-
+        #res = []
+        #for i, batch in enumerate(data_as_batches):
+        #    #res.extend(self.model(U.move_batch(batch, self.device)))
+        #    res.extend(self.processor._from_batch(self.model(U.move_batch(batch, self.device))))
+        res = self.processor._from_batches([self.model(U.move_batch(batch, self.device)) for batch in data_as_batches])
+        #print(res['inp']) 
+        #print(res['label']) 
+        #print(res['pred']) 
         if decode:
             res = self.processor.decode(res, list_input=True)
         return res
@@ -127,16 +130,19 @@ class BasicTrainer():
                 results['during_training'][str(i)] = {'train_loss': float(total_train_loss)}
                 self.model.eval()
                 # Predict sample on train
-                train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                #train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                train_res = self.predict(self.processor.get_sample(indx=0, size=self.sample_limit, split=0, raw=True))
                 self.processor.save_split(train_res, f"train_prediction_{epoch}_{iteration}")
             else:
                 self.logger.debug(f"Length of val_batches: {len(val_batches)}")
                 self.model.eval()
                 # Predict sample on train
-                train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                #train_res = self.predict(self.processor.get_data(raw=True)[0][:self.sample_limit])
+                train_res = self.predict(self.processor.get_sample(indx=0, size=self.sample_limit, split=0, raw=True))
                 self.processor.save_split(train_res, f"train_prediction_{epoch}_{iteration}")
                 # Predict sample on dev
-                dev_res = self.predict(self.processor.get_data(raw=True)[1][:self.sample_limit])
+                #dev_res = self.predict(self.processor.get_data(raw=True)[1][:self.sample_limit])
+                dev_res = self.predict(self.processor.get_sample(indx=0, size=self.sample_limit, split=1, raw=True))
                 self.processor.save_split(dev_res, f"dev_prediction_{epoch}_{iteration}")
 
                 # Evaluate
@@ -186,9 +192,9 @@ class BasicTrainer():
             test_batches = data[2]
             
         self.logger.info(f"Sample Raw example from train: ")
-        self.logger.info(train_raw[0])
+        self.logger.info(self.processor.get_sample(0))
         self.logger.info(f"After Encoding:")
-        sample_ = self.processor.encode(train_raw[0])
+        sample_ = self.processor.encode(self.processor.get_sample(0))
         self.logger.info(sample_)
         self.logger.info(f"After decoding:")
         sample_ = self.processor.decode(sample_)

@@ -100,6 +100,7 @@ class ListEvaluator:
         if aggregate not in ("mean"):
             raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
 
+        self.logger.debug("Evaluating a batch ==================")
         if aggregate == "mean":
             for k, f in enumerate(self.loss_f):
                 # for each loss, multiply with the mask
@@ -166,9 +167,13 @@ class ListEvaluator:
         #Iterate through all outputs / losses
         if aggregate not in ("mean"):
             raise AttributeError("Expecting aggregate attribute to be mean or sum, got {}".format(aggregate))
+
+        self.logger.debug("Inside calling method. calculating loss ======================== ")
         for k, f in enumerate(self.loss_f):
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
+
+            #self.logger.debug(f"Evaluator Whole batch: {data}")
             tmp_loss = self._applyloss(f, data['out'][k], data['label'][k])
             self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
             b_size = data['label'][k].shape[0] # We consider each example to count as 1 (class case). Will override if it's a sequence
