@@ -1,8 +1,0 @@
-optimizer:
-  class: Adam
-  module: torch.optim
-  params:
-    lr: 0.001
-    params: 
-      eval: 1
-      value: "config['model']['model'].parameters()"
