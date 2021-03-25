@@ -1,0 +1,15 @@
+defaults:
+  - processor: ans_lm.yaml
+  - model: rnnlm
+  - evaluator: lm
+  - optimizer: adam
+root_path: /Users/jkhouja/workspace/experiments/arabic_media/data/clean
+experiment_name: LM_ANS
+model_path: model.state
+experiment_output_file: results.json
+disable_gpu: false
+do_train: true
+do_predict: true
+epochs: 5
+log_interval: 200
+grad_clip: .25
