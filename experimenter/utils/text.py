@@ -298,7 +298,6 @@ class Encoder:
         if not update_vocab:
             # Show statistics
             logging.debug("Number of OOV: {}".format(num_unk))
-            pass
         return res
 
     def __call__(self, input_data, input_list=True, **kwargs):
