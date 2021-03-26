@@ -79,14 +79,6 @@ class BasicTrainer:
             pass_params_as_dict=True,
         )
 
-    def save(self):
-        self.processor.save()
-        self.model.save()
-        # self.evaluator.save()
-
-    def load(self, path):
-        pass
-
     def predict(self, data: list, decode: bool = True) -> list:
         """Given raw data (unprocessed), run prediction pipeline and return predictions
 
@@ -135,8 +127,8 @@ class BasicTrainer:
             val_loss = self.evaluator.update_batch_loss(res)
         if val_loss is None:
             raise ValueError(
-                """Iteration over batches did not happen.
-                Probably becuase batch_size is larger than the split and drop last is true"""
+                "Iteration over batches did not happen.\
+                        Probably becuase batch_size is larger than the split and drop last is true"
             )
         return val_loss
 
@@ -161,8 +153,8 @@ class BasicTrainer:
             if not val_batches:
                 self.logger.info(
                     prefix
-                    + "Epoch: {}: {}/{} Train duration(s): {:.1f} \t \
-                            Train loss (~avg over batches): {:.4f}".format(
+                    + "Epoch: {}: {}/{} Train duration(s): {:.1f}\
+                            \t Train loss (~avg over batches): {:.4f}".format(
                         epoch,
                         iteration * self.batch_size,
                         len(train_batches) * self.batch_size,
@@ -224,15 +216,16 @@ class BasicTrainer:
                 if self.evaluator.isbetter(val_loss, self.best_loss, is_metric=False):
                     self.best_loss = val_loss
                     # Found best model, save
-                    self.save()
+                    self.model.save()
                     results["best"] = results["during_training"][str(i)]
                     saved_model = " Best model saved"
                     # self.logger.info("Best model saved at: {}".format(config['out_path']))
 
                 self.logger.info(
                     prefix
-                    + "Epoch: {}: {}/{} Train duration(s): {:.1f} \t \
-                        Train loss (~avg over batches): {:.4f}, validation loss: {} | {}".format(
+                    + "Epoch: {}: {}/{} Train duration(s): {:.1f}\
+                            \t Train loss (~avg over batches):\
+                            {:.4f}, validation loss: {} | {}".format(
                         epoch,
                         iteration * self.batch_size,
                         len(train_batches) * self.batch_size,
@@ -365,7 +358,7 @@ class BasicTrainer:
     def __call__(self):
         if self.config["do_train"]:
             self.logger.info("Training flag is set to true. Will train")
-            config = self.train_model()
+            _ = self.train_model()
             self.logger.info("Training completed")
 
         if self.config["do_predict"]:
@@ -387,5 +380,3 @@ class BasicTrainer:
                 test = self.predict(data[2])
                 self.processor.save_split(test, "test_prediction")
                 self.logger.info("Prediction finished on test")
-
-        self.logger.info(config)

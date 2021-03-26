@@ -63,15 +63,15 @@ class DataProvider(object):
                 for i in range(b_size):  # batch-size:
                     try:
                         res[i][key].append(feat[i].tolist())
-                    except KeyError:
+                    except Exception:
                         res[i][key] = [feat[i].tolist()]
 
         return res
 
     # Inefficient, needs to reimplement
     def _from_batch(self, minibatch: dict):
-        """Regenerate list of data by stiching batches accross dictionary keys.
-        Implementation might not be correct"""
+        """Regenerate list of data by stiching batches
+        accross dictionary keys.  Implementation might not be correct"""
 
         b_size = minibatch[list(minibatch.keys())[0]][0].shape[0]
         res = []
@@ -112,7 +112,7 @@ class DataProvider(object):
             for i, feat in enumerate(raw_data[key]):
                 try:
                     res[key].append(self.encoder[key][i](feat, list_input=False))
-                except KeyError:
+                except Exception:
                     res[key].append(feat)
 
         return res
@@ -311,8 +311,8 @@ class DictDataProvider:
 
     # Inefficient, needs to reimplement
     def _from_batch_old(self, minibatch: dict):
-        """Regenerate list of data by stiching batches accross dictionary keys.
-        Implementation might not be correct"""
+        """Regenerate list of data by stiching batches
+        accross dictionary keys.  Implementation might not be correct"""
 
         b_size = minibatch[list(minibatch.keys())[0]][0].shape[0]
         res = []
@@ -325,8 +325,8 @@ class DictDataProvider:
         return res
 
     def _from_batch(self, minibatch: dict):
-        """Regenerate dict of data by stiching batches accross dictionary keys.
-        Implementation might not be correct"""
+        """Regenerate dict of data by stiching batches
+        accross dictionary keys.  Implementation might not be correct"""
 
         # b_size = minibatch[list(minibatch.keys())[0]][0].shape[0]
         res = {}
@@ -340,8 +340,8 @@ class DictDataProvider:
         return res
 
     def _from_batches(self, minibatches: List[dict]):
-        """Regenerate dict of data by stiching batches accross dictionary keys.
-        Implementation might not be correct"""
+        """Regenerate dict of data by stiching batches
+        accross dictionary keys.  Implementation might not be correct"""
 
         # b_size = minibatches[list(minibatches.keys())[0]][0].shape[0]
         res = {}
@@ -390,7 +390,7 @@ class DictDataProvider:
             for i, feat in enumerate(raw_data[key]):
                 try:
                     res[key].append(self.encoder[key][i](feat, list_input=False))
-                except KeyError:
+                except Exception:
                     res[key].append(feat)
 
         return res
@@ -538,8 +538,10 @@ class ListDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, data_as_list, lims):
-        """Takes data as list of [[[int, int, ...], [int, int, ...], ...],
-        [[int, int, ..], [int, int,..], ..], [mask, mask, ..]]"""
+        """Takes data as list of [[[int, int, ...],
+        [int, int, ...], ...], [[int, int, ..],
+        [int, int,..], ..], [mask, mask, ..]]"""
+
         self.num_inputs = len(data_as_list[0][0])
         self.num_outputs = len(data_as_list[0][1])
         self.len = len(data_as_list)

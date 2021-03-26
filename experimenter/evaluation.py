@@ -104,8 +104,8 @@ class ListEvaluator:
     def update_batch_loss(self, data, aggregate="mean"):
         """Mimics the update_batch but operates on the loss function not the metric function.
         Logis is same as call but maintains a global state across batches.
-        Assumes the loss function either has shape [batch, probs by class or real value
-        for regression] for loss per example or [batch,seq_len, probs]
+        Assumes the loss function either has shape [batch, probs by class
+        or real value for regression] for loss per example or [batch,seq_len, probs]
         for when prediction is for a sequence (lm / conversation / multi-class)
         in which case it sums over dimention 1."""
 
@@ -119,12 +119,14 @@ class ListEvaluator:
                 )
             )
 
+        self.logger.debug("Evaluating a batch ==================")
         if aggregate == "mean":
             for k, f in enumerate(self.loss_f):
                 # for each loss, multiply with the mask
                 # Do proper casting based on f_func instance type
                 tmp_loss = self._applyloss(f, data["out"][k], data["label"][k])
                 self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
+
                 # We consider each example to count as 1 (class case).
                 # Will override if it's a sequence
                 b_size = data["label"][k].shape[0]
@@ -146,8 +148,8 @@ class ListEvaluator:
                         f"Number of tokens in all sequences in batch: {num_items}"
                     )
 
-                    # Shape: [batch_size, }
-                    # tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.
+                    # weight each example by it's total tokens.  Shape: [batch_size, }
+                    # tmp_loss = tmp_loss * num_items
 
                     num_items = (num_items * (data["mask"][k] > 0)).sum()
                     self.logger.debug(
@@ -215,13 +217,21 @@ class ListEvaluator:
                     aggregate
                 )
             )
+
+        self.logger.debug(
+            "Inside calling method. calculating loss ======================== "
+        )
         for k, f in enumerate(self.loss_f):
             # for each loss, multiply with the mask
             # Do proper casting based on f_func instance type
+
+            # self.logger.debug(f"Evaluator Whole batch: {data}")
             tmp_loss = self._applyloss(f, data["out"][k], data["label"][k])
             self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
-            # We consider each example to count as 1 (class case). Will override if it's a sequence
+            # We consider each example to count as 1 (class case).
+            # Will override if it's a sequence
             b_size = data["label"][k].shape[0]
+
             self.logger.debug(f"Batch size: {b_size}")
             if tmp_loss.dim() > 1:
                 # label is a sequence of labels not a single label
@@ -239,8 +249,9 @@ class ListEvaluator:
                 self.logger.debug(
                     f"Number of tokens in all sequences in batch: {num_items}"
                 )
-                # Shape: [batch_size, }
-                # tmp_loss = tmp_loss * num_items # weight each example by it's total tokens.
+
+                # weight each example by it's total tokens.  Shape: [batch_size, }
+                # tmp_loss = tmp_loss * num_items
                 num_items = (num_items * (data["mask"][k] > 0)).sum()
                 self.logger.debug(
                     f"Number of tokens after multiplying with mask: {num_items}"
@@ -278,10 +289,8 @@ class ListEvaluator:
             self.logger.debug(f"Evaluator - output[{k}]: {data['out'][k]}")
             # tmp_loss = f(preds[0][k], y[k].squeeze().type(torch.LongTensor))
             self.logger.debug(f"Evaluator tmp loss{k}: {tmp_loss}")
-            num_items = data["label"][k].shape[
-                0
-            ]  # We consider each example to count as 1 (class case).
-            #  Will override if it's a sequence
+            # We consider each example to count as 1 (class case). Will override if it's a sequence
+            num_items = data["label"][k].shape[0]
             if tmp_loss.dim() > 1:
                 tmp_loss = tmp_loss.sum(
                     dim=1
@@ -310,8 +319,8 @@ class ListEvaluator:
 
     def _applyloss(self, f, output, label):
         """Calls the loss function with no aggregation.
-        Should return either [batch_size,] for class or
-        [batch_size, seq_len] for sequence classes"""
+        Should return either [batch_size,] for class or [batch_size, seq_len]
+        for sequence classes"""
 
         if isinstance(f, torch.nn.CrossEntropyLoss):
             if self.device == "cuda":
@@ -340,8 +349,8 @@ class ListEvaluator:
         return [np.inf] * len(self.metrics_f)
 
     def isbetter(self, a, b, is_metric=True):
-        """If is metric, we're assuming higher is better (think accuracy), else,
-        it's a loss and lower is better"""
+        """If is metric, we're assuming higher is better
+        (think accuracy), else, it's a loss and lower is better"""
 
         # Bad implementation, find a way to compare other metrics
         if is_metric:

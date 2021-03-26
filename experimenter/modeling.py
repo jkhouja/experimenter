@@ -20,9 +20,7 @@ class BaseModel(torch.nn.Module):
         # Load from init checkpoint if exist:
         if "init_checkpoint" in self.args.keys():
             self.load(self.args["init_checkpoint"])
-            # Save it to experiemnt directory as a first checkpoint.
-            # This is needed in training to predict
-            self.save()
+            self.save()  # Save it as a first checkpoint.  This is needed in training to predict
             self.logger.info(f"Model initialized from: {self.args['init_checkpoint']}")
 
         self.config["model"]["model"] = self
