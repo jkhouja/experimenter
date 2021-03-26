@@ -1,17 +1,14 @@
-import os
 from typing import List, Tuple, Union
 
 from experimenter.data import DictDataProvider
 from experimenter.utils import pipeline
 from experimenter.utils import utils as U
 
-# import dill  # without it we can't pickle lambda functions
-
 
 class MultiTaskProvider(DictDataProvider):
     """A multi-task class that takes list of tasks (with single input) and joins them"""
 
-    def __init__(self, config, checkpoint=None):
+    def __init__(self, config):
         super(MultiTaskProvider, self).__init__(config)
         # All text fields share the text encoder
         # Each label has a new encoder
@@ -25,7 +22,6 @@ class MultiTaskProvider(DictDataProvider):
         self.num_labels = len(self.label_indx)
         self.max_vocab_size = config["processor"]["params"]["max_vocab_size"]
         self.min_vocab_count = config["processor"]["params"]["min_vocab_count"]
-        self.path = os.path.join(config["out_path"], config["processor_path"])
 
         # Loaders
         self.loaders = []
@@ -38,28 +34,15 @@ class MultiTaskProvider(DictDataProvider):
                 )
             )
 
-        # Initialize pipelines
-        self.pipelines = []
+        # Text pipeline
         text_pipe = pipeline.TextPipeline(
             sep=self.sep,
             max_vocab_size=self.max_vocab_size,
             min_vocab_count=self.min_vocab_count,
         )
-        self.pipelines.append(text_pipe)
-        for label in self.label_encoder:
-            if label == "text":
-                # All labels of type text will share the same text pipeline (tokenizer / vocab)
-                self.logger.info("Adding text encoder")
-                self.pipelines.append(text_pipe)
-            elif label == "class":
-                self.logger.info("Adding class encoder")
-                cls_pipe = pipeline.ClassPipeline()
-                self.pipelines.append(cls_pipe)
+        # Labels pipeline
 
-        if checkpoint:
-            self.load(checkpoint)
-        # self.inp_pipeline, self.pipelines =  dill.load(open(checkpoint, 'rb'))
-        # text_pipe = self.inp_pipeline
+        as_is = U.chainer(funcs=[lambda x, list_input: x])
 
         self.encoder = {}
         self.decoder = {}
@@ -71,13 +54,26 @@ class MultiTaskProvider(DictDataProvider):
         self.decoder["label"] = []
         self.decoder["pred"] = []
 
-        # Labels pipeline
-        for i, l in enumerate(self.label_encoder):
-            self.encoder["label"].append(self.pipelines[i + 1].encoder)
-            self.decoder["label"].append(self.pipelines[i + 1].decoder)
-            self.decoder["pred"].append(self.pipelines[i + 1].decoder)
+        self.pipelines = []
 
-        as_is = U.chainer(funcs=[lambda x, list_input: x])
+        for label in self.label_encoder:
+            if label == "text":
+                # All labels of type text will share the same text pipeline (tokenizer / vocab)
+                self.logger.info("Adding text encoder")
+                self.pipelines.append(text_pipe)
+                self.encoder["label"].append(text_pipe.encoder)
+                self.decoder["label"].append(text_pipe.decoder)
+                self.decoder["pred"].append(text_pipe.decoder)
+            elif label == "class":
+                self.logger.info("Adding class encoder")
+                cls_pipe = pipeline.ClassPipeline()
+                self.pipelines.append(cls_pipe)
+                self.encoder["label"].append(cls_pipe.encoder)
+                self.decoder["label"].append(cls_pipe.decoder)
+                self.decoder["pred"].append(cls_pipe.decoder)
+            else:
+                raise ValueError("Label_encoder can be either text or class")
+
         # self.encoder['pred'] = self.encoder['inp']
         self.encoder["pred"] = self.encoder["label"]
         self.encoder["mask"] = [as_is for _ in range(self.num_labels)]
@@ -90,57 +86,53 @@ class MultiTaskProvider(DictDataProvider):
         self.decoder["out"] = [as_is for _ in range(self.num_labels)]
         self.decoder["meta"] = [as_is]
 
-        # Only process data when not loading from checkpoint
-        if not checkpoint:
-            # Process data
-            raw_data = self.upload_data()
+        # Process data
+        raw_data = self.upload_data()
 
-            # Build vocab through first round over data
-            # text_pipe.enc.build_vocab(raw_data)
+        # Build vocab through first round over data
+        # text_pipe.enc.build_vocab(raw_data)
 
-            self.logger.info(f"Splits: {len(raw_data)}")
+        self.logger.info(f"Splits: {len(raw_data)}")
 
-            # print(raw_data[0])
-            # Process data
-            s = [self.__call__(d, list_input=True) for d in raw_data]
+        # print(raw_data[0])
+        # Process data
+        s = [self.__call__(d, list_input=True) for d in raw_data]
 
-            text_pipe.enc.filter_vocab()
+        text_pipe.enc.filter_vocab()
 
-            text_pipe.enc.freeze()
+        text_pipe.enc.freeze()
 
-            # Now encode data
-            s = [self.__call__(d, list_input=True) for d in raw_data]
+        # Now encode data
+        s = [self.__call__(d, list_input=True) for d in raw_data]
 
-            num_classes = []
+        num_classes = []
 
-            for l_encoder in self.pipelines:
-                # self.logger.info(f"Label encoder {l_encoder.enc.vocab}")
-                num_classes.append(l_encoder.get_num_classes())
+        for l_encoder in self.pipelines:
+            # self.logger.info(f"Label encoder {l_encoder.enc.vocab}")
+            num_classes.append(l_encoder.get_num_classes())
 
-            config["processor"]["params"]["num_classes"] = num_classes
-            self.logger.info(f"Number of classes of output: {num_classes}")
+        config["processor"]["params"]["num_classes"] = num_classes
+        self.logger.info(f"Number of classes of output: {num_classes}")
 
-            # text_pipe.enc.freeze()
-            # d = self._create_splits(s)
-            self.data_raw = raw_data
-            self.data = tuple([self._to_batches(split) for split in s])
+        # text_pipe.enc.freeze()
+        # d = self._create_splits(s)
+        self.data_raw = raw_data
+        self.data = tuple([self._to_batches(split) for split in s])
 
-            # self.sample_data_raw = raw_data[0][1]
-            self.sample_data_raw = self.get_sample(0)
-            print(self.sample_data_raw)
+        # self.sample_data_raw = raw_data[0][1]
+        self.sample_data_raw = self.get_sample(0)
+        print(self.sample_data_raw)
 
-            # self.sample_data_processed = s[0][1]
-            config["processor"]["params"]["vocab_size"] = len(
-                text_pipe.enc.vocab
-            )  # Needs changing, we might have multiple vocabs
-            self.logger.info(f"Vocab size: {len(text_pipe.enc.vocab)}")
-            self.logger.info("First 10 vocab words:")
-            self.logger.info(list(text_pipe.enc.vocab.items())[:10])
-            self.logger.info("Top frequent words:")
-            self.logger.info(text_pipe.enc.wc.most_common(20))
-            config["processor"]["params"][
-                "padding_indx"
-            ] = text_pipe.enc.get_padding_indx()
+        # self.sample_data_processed = s[0][1]
+        config["processor"]["params"]["vocab_size"] = len(
+            text_pipe.enc.vocab
+        )  # Needs changing, we might have multiple vocabs
+        self.logger.info(f"Vocab size: {len(text_pipe.enc.vocab)}")
+        self.logger.info("First 10 vocab words:")
+        self.logger.info(list(text_pipe.enc.vocab.items())[:10])
+        self.logger.info("Top frequent words:")
+        self.logger.info(text_pipe.enc.wc.most_common(20))
+        config["processor"]["params"]["padding_indx"] = text_pipe.enc.get_padding_indx()
 
     def upload_data(
         self, **kwargs
@@ -191,20 +183,6 @@ class MultiTaskProvider(DictDataProvider):
             splits = self._convert_to_dict(splits)
 
         return splits
-
-    def save(self):
-        """Wrong implementation"""
-        # with open(self.path, 'wb') as out_f:
-        #    dill.dump((self.inp_pipeline, self.pipelines), out_f, pickle.HIGHEST_PROTOCOL)
-
-        for i, p in enumerate(self.pipelines):
-            p.save(self.path + str(i))
-
-    def load(self, path):
-
-        for i, p in enumerate(self.pipelines):
-            print(f"Loading processor files from {path + str(i)}")
-            p.load(path + str(i))
 
     def get_sample(self, indx, size=1, split=0, raw=True):
         sample_data_raw = {}
