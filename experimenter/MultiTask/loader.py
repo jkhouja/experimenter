@@ -3,9 +3,6 @@ import os
 import re
 
 import pandas as pd
-from nltk import CFG
-from nltk.parse.generate import generate
-from torchnlp.datasets import imdb_dataset
 
 
 class Dummy:
@@ -94,8 +91,8 @@ class LMTextFile:
 
 
 class LMCSV:
-    """A class that takes a csv file (usually saved by pandas)
-    and a inp_col name and create a LM tuple record:
+    """A class that takes a csv file (usually saved by pandas) and
+    a inp_col name and create a LM tuple record:
     (sentence, {label_name: sentence_out})
     after adding beg_sym and end_sym"""
 
@@ -131,7 +128,7 @@ class LMCSV:
         # self.logger.info("All loaded data size:{}".format(data_in.shape[0]))
 
         def f(x):
-            return self.beg_sym + x + self.end_sym
+            self.beg_sym + x + self.end_sym
 
         out = []
         for split in data_in:
@@ -190,7 +187,7 @@ class ClassCSV:
 
 
 class MovieCorpus:
-    """A class to load cornel movie corpus data (train only)"""
+    """A class to load cornel movie corpus data"""
 
     def __init__(self, data_path, input_paths, label_col, limit=None):
         self.paths = [os.path.join(data_path, input_path) for input_path in input_paths]
@@ -284,78 +281,3 @@ class MovieCorpus:
                 if inputLine and targetLine:
                     qa_pairs.append([inputLine, targetLine])
         return qa_pairs
-
-
-class ClassCFG:
-    """A class that generates synthetic data for a classification task record:
-    (sentence, {label_name: class})
-    """
-
-    def __init__(self, label_name, data_path, limit=None):
-        self.label_name = label_name
-        self.limit = limit
-        sent_prod_grammar = """
-            S -> IDENT POS_STATE '+' | IDENT NEG_STATE '-'
-            IDENT -> 'it' | Det_sing PROD | Det_sing PROD CONNECT PROD_IDENT |\
-                    Det_sing DESC POINTER Det_sing PROD | Det_sing PROD DESC |\
-                    Det_sing DESC POINTER Det_sing PROD CONNECT PROD_IDENT
-            CONNECT -> 'which' | 'that'
-            PROD_IDENT -> N VP_PAST
-            PROD -> PROD_NAME
-            DESC -> DESC_NAME
-            POINTER -> 'of'
-            POS_STATE -> 'is' POSITIVE | 'is' AUX POSITIVE |\
-                    'in my opinion is' POSITIVE | 'cannot be found anywhere else'
-            NEG_STATE -> 'is' NEGATIVE | 'is' AUX NEGATIVE |\
-                    'in my opinion is' NEGATIVE | 'is a waste of money!'
-            AUX -> 'honestly|totally'
-            POSITIVE -> 'great'
-            NEGATIVE -> 'bad'
-            Det_sing -> 'the' | 'this' | 'that'
-            Det_plur -> 'these' | 'the' | 'the {22}'
-            UnDet_sing -> 'a' | 'such'
-            UnDet_sing_vowel -> 'an'
-            PROD_NAME -> 'PS5' | 'Instagram' | 'camera' | 'DSLR'
-            DESC_NAME -> '{product_descriptor}'
-            N -> '{group_of_people}'
-            VP_PAST -> '{purchased}'
-            """
-        self.grammar = CFG.fromstring(sent_prod_grammar)
-
-    def __call__(self):
-        out = []
-        for sentence in generate(self.grammar, n=self.limit):
-            text = " ".join(sentence[:-1])
-            label = sentence[-1]
-            out.append((text, {self.label_name: label}))
-
-        return [out]
-
-
-class ClassIMDB:
-    def __init__(
-        self, train=True, test=False, data_path="imdg_data/", label_name="sentiment"
-    ):
-        self.train = train
-        self.test = test
-        self.directory = data_path
-        self.label_name = label_name
-
-    def process_fold(self, fold: list) -> list:
-        res = []
-        for record in fold:
-            res.append((record["text"], {self.label_name: [record["sentiment"]]}))
-        return res
-
-    def __call__(self):
-
-        folds = imdb_dataset(train=self.train, test=self.test, directory=self.directory)
-        out = []
-        if self.train and self.test:
-            out.append(self.process_fold(folds[0]))
-            out.append(self.process_fold(folds[1]))
-
-        else:
-            out.append(self.process_fold(folds))
-
-        return out
