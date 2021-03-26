@@ -222,10 +222,9 @@ class BasicTrainer:
                     # self.logger.info("Best model saved at: {}".format(config['out_path']))
 
                 self.logger.info(
-                    prefix
-                    + "Epoch: {}: {}/{} Train duration(s): {:.1f}\
-                            \t Train loss (~avg over batches):\
-                            {:.4f}, validation loss: {} | {}".format(
+                    prefix + "Epoch: {}: {}/{} Train duration(s): {:.1f}"
+                    " \t Train loss (~avg over batches):"
+                    "{:.4f}, validation loss: {} | {}".format(
                         epoch,
                         iteration * self.batch_size,
                         len(train_batches) * self.batch_size,
