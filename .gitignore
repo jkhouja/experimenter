@@ -1,0 +1,10 @@
+__pycache__/
+.py[cod]
+.tmp
+.DS_Store
+local/
+tmp/
+build/
+_static/
+_templates/
+__pycache__

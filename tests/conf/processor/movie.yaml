@@ -4,12 +4,13 @@ processor:
   module: experimenter.MultiTask.data
   params:
     loaders:
-    - class: Dummy
+    - class: MovieCorpus
       module: experimenter.MultiTask.loader
       params:
-        cls_label: label
-        data_size: 600
-        lm_label: lm
+        label_col: response
+        limit: 1000 
+        input_paths:
+            - "."
     task_order:
     - 0
     batch_size: 4
@@ -17,14 +18,11 @@ processor:
     input_path: ''
     label_encoder:
     - text
-    - class
     label_indx:
-      label: 1
-      lm: 0
+      response: 0
     mask_weights:
     - 1
-    - 1
-    max_vocab_size: 3000
+    max_vocab_size: 10000
     min_vocab_count: 10
     separator: ' '
     seq_len:
@@ -32,9 +30,7 @@ processor:
       - 20
       label:
       - 20
-      - 1
       mask:
-      - 1
       - 1
     shuffle: true
     splits:

@@ -1,0 +1,15 @@
+defaults:
+  - processor: movie
+  - model: seq2seq 
+  - evaluator: lm
+  - optimizer: adam
+root_path: /Users/jkhouja/workspace/experiments/moviecorpus
+experiment_name: MOVIE_CORPUS
+model_path: model.state
+experiment_output_file: results.json
+disable_gpu: false
+do_train: true
+do_predict: false
+epochs: 35
+log_interval: 3000
+grad_clip: .25

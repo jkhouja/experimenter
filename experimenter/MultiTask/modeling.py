@@ -6,8 +6,9 @@ from experimenter.modeling import BaseModel
 
 
 class SharedEncoder(BaseModel):
-    """A model that takes a text sequence and a list of (classes, sequences),
-    creates a representation and output a decoder for sequence and/or label per class"""
+    """A model that takes a text sequence and a list of
+    (classes, sequences), creates a representation and
+    output a decoder for sequence and/or label per class"""
 
     def __init__(self, config):
         super(SharedEncoder, self).__init__(config)
@@ -58,8 +59,7 @@ class SharedEncoder(BaseModel):
         # self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, input_batch, **kwargs):
-        # input_batch is list of 1) list of inputs, 2)
-        # list of outputs 3) masks of outputs
+        # input_batch is list of 1) list of inputs, 2) list of outputs 3) masks of outputs
         inps = input_batch["inp"]
 
         # Process text input which is assumed to be the first feature
@@ -77,8 +77,7 @@ class SharedEncoder(BaseModel):
             inp_text_emb, inp_text_lengths, batch_first=True, enforce_sorted=False
         )
         s1_all_states, s1_last_hidden = self.lstm(s1_packed, first_hidden)
-        # s1_last_hidden = (h_n, c_n) each of shape
-        # (num_layers * num_directions, batch, hidden_size):
+        # s1_last_hidden = (h_n, c_n). shape (num_layers * num_directions, batch, hidden_size):
         s1_last_state = s1_last_hidden[0].permute(1, 2, 0).squeeze()
         s1_all_hidden = torch.nn.utils.rnn.pad_packed_sequence(
             s1_all_states,
@@ -150,8 +149,7 @@ class SeqDecoder(BaseModel):
         self.dropout = 0
 
         self.emb = emb_layer
-        # self.emb = torch.nn.Embedding(emb_layer.num_embeddings,
-        # self.inp_dim + 13, padding_idx=0)
+        # self.emb = torch.nn.Embedding(emb_layer.num_embeddings, self.inp_dim + 13, padding_idx=0)
         self.lstm = torch.nn.LSTM(
             input_size=self.inp_dim,
             hidden_size=self.hidden_dim,
@@ -174,8 +172,7 @@ class SeqDecoder(BaseModel):
             inp_text_emb, inp_text_lengths, batch_first=True, enforce_sorted=False
         )
         s1_all_states, s1_last_hidden = self.lstm(s1_packed, first_hidden)
-        # s1_last_hidden = (h_n, c_n) each of shape
-        # (num_layers * num_directions, batch, hidden_size):
+        # s1_last_hidden = (h_n, c_n). shape (num_layers * num_directions, batch, hidden_size):
         s1_last_state = s1_last_hidden[0].permute(1, 2, 0).squeeze()
         s1_all_hidden = torch.nn.utils.rnn.pad_packed_sequence(
             s1_all_states,
@@ -194,9 +191,9 @@ class SeqDecoder(BaseModel):
 
 
 class Seq2Seq(BaseModel):
-    """An encoder decoder model that takes a text sequence and a list of
-    (classes, sequences), creates a representation and output a decoder
-    for sequence and/or label per class"""
+    """An encoder decoder model that takes a text sequence
+    and a list of (classes, sequences), creates a representation
+    and output a decoder for sequence and/or label per class"""
 
     def __init__(self, config):
         super(Seq2Seq, self).__init__(config)
@@ -266,8 +263,7 @@ class Seq2Seq(BaseModel):
         # self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, input_batch, **kwargs):
-        # input_batch is list of 1) list of inputs, 2)
-        # list of outputs 3) masks of outputs
+        # input_batch is list of 1) list of inputs, 2) list of outputs 3) masks of outputs
         inps = input_batch["inp"]
 
         # Process text input which is assumed to be the first feature
@@ -285,16 +281,15 @@ class Seq2Seq(BaseModel):
             inp_text_emb, inp_text_lengths, batch_first=True, enforce_sorted=False
         )
         s1_all_states, s1_last_hidden = self.lstm(s1_packed, first_hidden)
-        # s1_last_hidden = (h_n, c_n) each of shape
-        # (num_layers * num_directions, batch, hidden_size):
+        # s1_last_hidden = (h_n, c_n). shape (num_layers * num_directions, batch, hidden_size):
 
         s1_last_state = s1_last_hidden[0].permute(1, 2, 0).squeeze()
         # s1_last_context = s1_last_hidden[1].permute(1,2,0).squeeze()
         # s1_all_hidden = torch.nn.utils.rnn.pad_packed_sequence(
-        #    s1_all_states,
-        #    batch_first=True,
-        #    padding_value=0,
-        #    total_length=self.in_seq_len[0],
+        #     s1_all_states,
+        #     batch_first=True,
+        #     padding_value=0,
+        #     total_length=self.in_seq_len[0],
         # )
         # s1_all_hidden shape is (seq_len, batch, num_directions * hidden_size):
         # representation is s1_last_hidden
@@ -308,10 +303,11 @@ class Seq2Seq(BaseModel):
             logging.debug(f"Shape of output layer for output number: {i}")
 
             if self.encoders[i] == "text":
-                # seq prediction task. Output for
-                # output_seq_len starting from last state
-                teacher_labels = torch.cat((self.sos_vec, inp_text[:, :-1]), 1)
-                assert teacher_labels.shape == inp_text.shape
+                # seq prediction task. Output for output_seq_len starting from last state
+                teacher_labels = torch.cat(
+                    (self.sos_vec, input_batch["label"][i][:, :-1]), 1
+                )
+                # assert teacher_labels.shape == inp_text.shape
                 lm_prediction = self.out_decoder[i](
                     teacher_labels, first_hidden=s1_last_hidden
                 )
