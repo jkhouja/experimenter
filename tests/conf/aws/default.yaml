@@ -1,0 +1,7 @@
+aws:
+    bucket_prefix: s3://modeling.khouja
+    root_path: /test_experiments
+    role: sagemaker
+    instance_count: 1
+    instance_type: ml.m5.large
+    wait: False

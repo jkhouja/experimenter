@@ -3,9 +3,11 @@ defaults:
   - model: seq2seq 
   - evaluator: 2_lm_cls
   - optimizer: adam
-root_path: /Users/jkhouja/repo/latynt_related/experimenter/tests
-experiment_name: Multi_LM_CLS_DUMMY
-model_path: model.state
+  - aws: default
+root_path: /Users/jkhouja/workspace/experiments
+experiment_name: Multi-LM-CLS-DUMMY
+model_path: best_model.state
+output_subdir: results
 experiment_output_file: results.json
 disable_gpu: false
 do_train: true

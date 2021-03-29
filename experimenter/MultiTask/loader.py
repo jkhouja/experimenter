@@ -125,18 +125,20 @@ class LMCSV:
             # Limit the first split (train) size
             data_in[0] = data_in[0][: self.limit]
         # data_in['stance'] = data_in['stance'].astype(str)
-        # self.logger.info("All loaded data size:{}".format(data_in.shape[0]))
+        print("All loaded data size:{}".format(data_in[0].shape[0]))
+        print(self.end_sym, self.beg_sym)
 
         def f(x):
-            self.beg_sym + x + self.end_sym
+            return self.beg_sym + x + self.end_sym
 
         out = []
         for split in data_in:
             s1_data = [f(x[self.inp_col]) for x in split.to_dict(orient="records")]
+            print(s1_data)
             out.append(
                 [
                     (
-                        [d[: -(len(self.end_sym))]],
+                        d[: -(len(self.end_sym))],
                         {self.label_name: d[len(self.beg_sym) :]},  # noqa: E203
                     )
                     for d in s1_data

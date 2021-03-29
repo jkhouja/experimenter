@@ -1,11 +1,13 @@
 defaults:
-  - processor: ans_lm.yaml
-  - model: rnnlm
+  - processor: multi_ans_lm.yaml
+  - model: seq2seq
   - evaluator: lm
   - optimizer: adam
-root_path: /Users/jkhouja/workspace/experiments/arabic_media/data/clean
-experiment_name: LM_ANS
-model_path: model.state
+  - aws: default
+root_path: /Users/jkhouja/workspace/experiments
+experiment_name: LM-ANS
+model_path: best_model.state
+output_subdir: results
 experiment_output_file: results.json
 disable_gpu: false
 do_train: true

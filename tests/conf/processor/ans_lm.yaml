@@ -4,7 +4,7 @@ processor:
   module: experimenter.LM.data
   params:
     input_path: 
-      - "clean_agreement_3annotations.csv"
+      - "arabic_sample_data.csv"
     seq_len:
       inp:
         - 30
