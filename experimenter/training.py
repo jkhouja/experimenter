@@ -6,6 +6,7 @@ import pprint
 import random
 from pathlib import Path
 
+import git
 import torch
 
 from experimenter.utils import utils as U
@@ -24,6 +25,10 @@ class BasicTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self.config = config
+        # Get Git commit hash
+        repo = git.Repo(search_parent_directories=True)
+        sha = repo.head.object.hexsha
+        self.config["commit_sha"] = sha
         self.config["results"] = {}
         self.config["results"]["during_training"] = {}
         self.current_epoch = 0
@@ -31,7 +36,7 @@ class BasicTrainer:
         self.sample_limit = config.get("sample_limit") or 10
         config["out_path"] = os.path.join(
             config["root_path"],
-            "results",
+            config["output_subdir"],
             config["experiment_name"],
             "_".join(
                 (
@@ -218,7 +223,7 @@ class BasicTrainer:
                     # Found best model, save
                     self.model.save()
                     results["best"] = results["during_training"][str(i)]
-                    saved_model = " Best model saved"
+                    saved_model = f" Best model saved in: {self.model.model_path}"
                     # self.logger.info("Best model saved at: {}".format(config['out_path']))
 
                 self.logger.info(

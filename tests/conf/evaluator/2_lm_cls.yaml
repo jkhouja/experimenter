@@ -21,4 +21,3 @@ evaluator:
     - class: Accuracy
       module: experimenter.evaluation
       params: {}
-model_path: model.state
