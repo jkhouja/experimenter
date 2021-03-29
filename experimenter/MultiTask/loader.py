@@ -125,8 +125,6 @@ class LMCSV:
             # Limit the first split (train) size
             data_in[0] = data_in[0][: self.limit]
         # data_in['stance'] = data_in['stance'].astype(str)
-        print("All loaded data size:{}".format(data_in[0].shape[0]))
-        print(self.end_sym, self.beg_sym)
 
         def f(x):
             return self.beg_sym + x + self.end_sym
@@ -230,7 +228,6 @@ class MovieCorpus:
         res = []
         for pair in self.extractSentencePairs(conversations):
             res.append([pair[0], {self.label_col: pair[1]}])
-
         print("Loading data from disk finished")
         if self.limit:
             return [res[: self.limit]]
