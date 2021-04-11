@@ -35,7 +35,7 @@ class MultiTaskProvider(DictDataProvider):
             )
 
         # Text pipeline
-        text_pipe = pipeline.TextPipeline(
+        text_pipe = pipeline.BertTextPipeline(
             sep=self.sep,
             max_vocab_size=self.max_vocab_size,
             min_vocab_count=self.min_vocab_count,
@@ -98,9 +98,9 @@ class MultiTaskProvider(DictDataProvider):
         # Process data
         s = [self.__call__(d, list_input=True) for d in raw_data]
 
-        text_pipe.enc.filter_vocab()
+        # text_pipe.enc.filter_vocab()
 
-        text_pipe.enc.freeze()
+        # text_pipe.enc.freeze()
 
         # Now encode data
         s = [self.__call__(d, list_input=True) for d in raw_data]
@@ -131,8 +131,8 @@ class MultiTaskProvider(DictDataProvider):
         self.logger.info("First 10 vocab words:")
         self.logger.info(list(text_pipe.enc.vocab.items())[:10])
         self.logger.info("Top frequent words:")
-        self.logger.info(text_pipe.enc.wc.most_common(20))
-        config["processor"]["params"]["padding_indx"] = text_pipe.enc.get_padding_indx()
+        # self.logger.info(text_pipe.enc.wc.most_common(20))
+        config["processor"]["params"]["padding_indx"] = 0
 
     def upload_data(
         self, **kwargs
