@@ -1,0 +1,41 @@
+data_subdir: data
+processor:
+  class: MultiTaskProvider
+  module: experimenter.data.MultiTaskProvider
+  params:
+    loaders:
+    - class: ClassCSV
+      module: experimenter.loaders.ClassCSV
+      params:
+        input_paths:
+          - IMDB_train.csv
+          - IMDB_dev.csv
+          - IMDB_test.csv
+        inp_col: review
+        out_col: sentiment
+        label_name: label
+        limit: -1
+    down_weight_classes: false
+    task_order:
+    - 0
+    batch_size: 12
+    drop_last: true
+    input_path: ''
+    label_encoder:
+    - class
+    label_indx:
+      label: 0
+    mask_weights:
+    - 1
+    seq_len:
+      inp:
+      - 350
+      label:
+      - 1
+      mask:
+      - 1
+    shuffle: true
+    splits:
+    - 0.85
+    - 0.15
+

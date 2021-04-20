@@ -3,6 +3,7 @@ import os
 
 import hydra
 from omegaconf import DictConfig, OmegaConf, errors
+from sagemaker.debugger import TensorBoardOutputConfig
 from sagemaker.pytorch.estimator import PyTorch
 
 if __name__ == "__main__":
@@ -36,6 +37,14 @@ if __name__ == "__main__":
         as_dict["data_subdir"] = "input/data/train"
         as_dict["output_subdir"] = "output/data"
 
+        # Set the local dir for tensorboard
+        tb_log_dir = "/opt/ml/output/tensorboard/"
+        as_dict["tb_log_dir"] = tb_log_dir
+        tensorboard_output_config = TensorBoardOutputConfig(
+            s3_output_path=aws_out_path,
+            container_local_output_path=tb_log_dir,
+        )
+
         print(OmegaConf.to_yaml(cfg))
         print("Overriden Root Path: " + aws_root_path)
 
@@ -54,6 +63,7 @@ if __name__ == "__main__":
             "SAGEMAKER_REQUIREMENTS": "requirements.txt",  # path relative to `source_dir` below.
         }
 
+        # Using Sagemaker prebuilt Pytorch container
         pytorch_estimator = PyTorch(
             entry_point="run.py",
             source_dir=script_folder,
@@ -66,6 +76,7 @@ if __name__ == "__main__":
             output_path=aws_out_path,
             base_job_name=cfg.experiment_name,
             instance_type=instance_type,
+            tensorboard_output_config=tensorboard_output_config,
         )
 
         pytorch_estimator.fit({"train": aws_data_path}, wait=wait)

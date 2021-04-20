@@ -133,6 +133,9 @@ class Encoder:
         self.update_vocab = update_vocab
         self.wc = collections.Counter()
         self.trim_pad = True
+        self.smoothing = (
+            4  # Random smoothing number for 0 count classes (like PAD / UNK)
+        )
 
         if not vocab:
             self.vocab = self.get_empty_vocab()
@@ -161,6 +164,27 @@ class Encoder:
 
     def get_vocab(self):
         return self.vocab
+
+    def get_vocab_counts(self, as_list=False):
+        logging.info(self.vocab)
+        if as_list:
+            res = [0] * len(self.vocab)
+            for w, c in self.wc.items():
+                logging.info(w)
+                logging.info(self.vocab[w])
+                res[self.vocab[w]] = c
+            return res
+        return [(self.vocab.get(w, self.unk), c) for w, c in self.wc.items()]
+
+    def get_vocab_weights(self, as_list=False, min_w=False):
+        counts = self.get_vocab_counts(as_list)
+        if as_list:
+            dom_class = min(counts) if min_w else max(counts)
+            return [dom_class / max(c, self.smoothing) for c in counts]
+        dom_class = (
+            min([c for w, c in counts]) if min_w else max([c for w, c in counts])
+        )
+        return [(w, dom_class / max(c, self.smoothing)) for w, c in counts]
 
     def filter_vocab(self):
         if self.max_vocab_size is not None:
@@ -298,6 +322,7 @@ class Encoder:
         if not update_vocab:
             # Show statistics
             logging.debug("Number of OOV: {}".format(num_unk))
+
         return res
 
     def __call__(self, input_data, input_list=True, **kwargs):

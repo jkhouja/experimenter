@@ -1,0 +1,7 @@
+encoder:
+  class: TextPipeline
+  module: experimenter.utils.pipeline
+  params:
+    max_vocab_size: 30000
+    min_vocab_count: 5
+    seperator: ' '

@@ -17,16 +17,21 @@ class Accuracy:
 
             score: scalar of accuracy for this bach
         """
-        assert isinstance(prediction, torch.Tensor)
-        assert isinstance(label, torch.Tensor)
+        # assert isinstance(prediction, torch.Tensor)
+        # assert isinstance(label, torch.Tensor)
         logging.debug(f"prediction: {prediction}")
         logging.debug(f"true label: {label}")
-        corrects = (prediction == label).sum().float()
-        total = label.shape[0]
+
+        corrects = 0
+        total = 0
+        for pred, label in zip(prediction, label):
+            corrects += int(pred == label)
+            total += 1
+
         val_score = corrects
         val_score /= total
         logging.debug(f"Val_score: {val_score}")
-        return val_score.cpu().detach().numpy()
+        return val_score
 
 
 class Dummy:

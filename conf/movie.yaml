@@ -1,0 +1,19 @@
+defaults:
+  - processor: movie
+  - model: seq2seq 
+  - evaluator: lm
+  - optimizer: adam
+  - aws: default
+  - encoder: default
+root_path: /Users/jkhouja/workspace/experiments
+experiment_name: MOVIE-CORPUS
+model_path: model.state
+output_subdir: results
+experiment_output_file: results.json
+disable_gpu: false
+do_train: true
+do_predict: false
+epochs: 35
+log_interval: 100
+grad_clip: 1.0
+logging_level: 20

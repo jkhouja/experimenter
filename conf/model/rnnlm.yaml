@@ -1,0 +1,13 @@
+model:
+  class: RNNLMModel
+  module: experimenter.LM.modeling
+  params:
+    dropout: 0
+    embedding_dim: 20
+    hidden_dim: 40
+    max_seq_len:
+        eval: 1
+        value: "config['processor']['params']['seq_len']['inp'][0]"
+    vocab_size:
+        eval: 1
+        value: "config['processor']['params']['vocab_size']"

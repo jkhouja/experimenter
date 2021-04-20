@@ -169,7 +169,7 @@ class DataProvider(object):
             res = dict()
             for key in out.keys():
                 res[key] = []
-                self.logger.debug(f"Decoding key: {key}")
+                # self.logger.debug(f"Decoding key: {key}")
                 if key == "meta":
                     # For the meta keys, we don't have decoder per feature rather it's passed as is.
                     res[key].append(self.decoder[key](out[key]))
@@ -414,7 +414,6 @@ class DictDataProvider:
                     self.logger.error(
                         f"Failed encoding feature {i} in key {key}. Will be passed as is"
                     )
-                    raise
                     res[key].append(feat)
 
         return res
@@ -447,12 +446,12 @@ class DictDataProvider:
         res = dict()
         for key in model_output.keys():
             res[key] = []
-            self.logger.debug(f"Decoding key: {key}")
+            # self.logger.debug(f"Decoding key: {key}")
             # if key == 'meta':
             #    res[key].append(self.decoder[key](model_output[key]))
             #    continue
             for i, feat in enumerate(model_output[key]):
-                self.logger.debug(f"Decoding feature {i} which is {feat}")
+                # self.logger.debug(f"Decoding feature {i} which is {feat}")
                 res[key].append(self.decoder[key][i](feat, list_input=True))
         return res
 
