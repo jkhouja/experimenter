@@ -1,0 +1,8 @@
+optimizer:
+  class: AdamW
+  module: transformers.optimization
+  params:
+    lr: 0.00005
+    params:
+      eval: 1
+      value: "config['model']['model'].parameters()"

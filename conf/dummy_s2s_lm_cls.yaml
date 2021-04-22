@@ -1,9 +1,10 @@
 defaults:
-  - processor: play_2_lm_cls
+  - processor: dummy_lm_cls
   - model: seq2seq 
   - evaluator: 2_lm_cls
   - optimizer: adam
-  - aws: ft
+  - aws: default
+  - encoder: default
 root_path: /Users/jkhouja/workspace/experiments
 experiment_name: Multi-LM-CLS-DUMMY
 model_path: best_model.state
@@ -15,3 +16,4 @@ do_predict: true
 epochs: 4
 log_interval: 200
 grad_clip: .25
+logging_level: 20

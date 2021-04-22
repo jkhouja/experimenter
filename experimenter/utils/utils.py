@@ -73,6 +73,20 @@ def move_batch(batch, device):
     return res
 
 
+def get_gradients(model):
+    """Returns a list of average graident per learnable parameter"""
+
+    ave_grads = []
+    for p in model.named_parameters():
+        if p[1].requires_grad:
+            if p[1].grad is not None:
+                ave_grads.append((p[0], p[1].grad.abs().mean()))
+            else:
+                ave_grads.append((p[0], None))
+
+    return ave_grads
+
+
 def load_class(module_name, class_name, class_param, pass_params_as_dict=False):
     """Loads a class given it's module name, class name, and dict of params"""
     module = importlib.import_module(module_name)

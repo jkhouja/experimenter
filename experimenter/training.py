@@ -8,6 +8,7 @@ from pathlib import Path
 
 import git
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
 from experimenter.utils import utils as U
 
@@ -33,7 +34,9 @@ class BasicTrainer:
         self.config["results"]["during_training"] = {}
         self.current_epoch = 0
         self.epochs = config["epochs"]
-        self.sample_limit = config.get("sample_limit") or 10
+        self.sample_limit = (
+            config.get("sample_limit") or config["processor"]["params"]["batch_size"]
+        )
         config["out_path"] = os.path.join(
             config["root_path"],
             config["output_subdir"],
@@ -45,6 +48,11 @@ class BasicTrainer:
                 )
             ),
         )
+        tb_log_dir = config.get("tb_log_dir", None)
+        if tb_log_dir is None:
+            tb_log_dir = os.path.join(config["out_path"], "runs")
+
+        self.writer = SummaryWriter(log_dir=tb_log_dir, flush_secs=10)
         config["data_path"] = os.path.join(config["root_path"], config["data_subdir"])
         self.out_path = os.path.join(
             config["out_path"], config["experiment_output_file"]
@@ -53,7 +61,7 @@ class BasicTrainer:
         Path(config["out_path"]).mkdir(parents=True, exist_ok=True)
         self.logger.info(f"All results will be saved in {config['out_path']}")
         self.batch_size = config["processor"]["params"]["batch_size"]
-        self.clip = config["grad_clip"] if "grad_clip" in self.config.keys() else 0.25
+        self.clip = config.get("grad_clip", None)
         # Set up GPU / CPU
         self.gpu_mode = not config["disable_gpu"] and torch.cuda.is_available()
         if self.gpu_mode:
@@ -137,6 +145,36 @@ class BasicTrainer:
             )
         return val_loss
 
+    def log_tf(self, losses, global_step, prefix="", only_loss=False):
+
+        if not isinstance(losses, torch.Tensor):
+            for i, l in enumerate(losses):
+                self.writer.add_scalar(f"{prefix}_loss_{i}", l, global_step)
+        else:
+            self.writer.add_scalar(f"{prefix}_loss", losses, global_step)
+
+        if only_loss:
+            return
+
+        # Log all raw gradient norms
+        zero_params = 0
+        grads = []
+        for i, p in enumerate(self.model.named_parameters()):
+            zero_params += torch.sum(
+                torch.isclose(p[1].data, torch.tensor(0, dtype=torch.float))
+            ).item()
+            if p[1].grad is not None:
+                grad_norm = p[1].grad.data.norm(2).item()
+                grads.append(grad_norm)
+                self.logger.debug(grad_norm)
+                self.writer.add_scalar(f"z_gradient_{p[0]}", grad_norm, global_step)
+
+        # Log aggregate gradients
+        self.writer.add_scalar("Zero_parameters", zero_params, global_step)
+        self.writer.add_scalar("gradients_max", max(grads), global_step)
+        self.writer.add_scalar("gradients_min", min(grads), global_step)
+        self.writer.add_scalar("gradients_mean", sum(grads) / len(grads), global_step)
+
     def train_model(self, data: list = None) -> dict:
         """Train the model on the data.
 
@@ -147,14 +185,20 @@ class BasicTrainer:
             resulting config file after training
         """
 
-        def log(log_time, total_time, epoch, iteration, total_train_loss, prefix=""):
+        def log(
+            log_time,
+            total_time,
+            epoch,
+            iteration,
+            global_step,
+            total_train_loss,
+            prefix="",
+        ):
 
             val_loss = None
-            self.logger.debug("Gradient Norms of last training batch after clipping")
-            for p in list(
-                filter(lambda p: p.grad is not None, self.model.parameters())
-            ):
-                self.logger.debug(p.grad.data.norm(2).item())
+            self.logger.debug(
+                "Gradient Norms of last training batch (after clipping if clipping is applied)"
+            )
             if not val_batches:
                 self.logger.info(
                     prefix
@@ -181,6 +225,7 @@ class BasicTrainer:
                 self.processor.save_split(
                     train_res, f"train_prediction_{epoch}_{iteration}"
                 )
+                self.model.save()
             else:
                 self.logger.debug(f"Length of val_batches: {len(val_batches)}")
                 self.model.eval()
@@ -216,6 +261,8 @@ class BasicTrainer:
                     "train_loss": float(total_train_loss),
                     "val_loss": val_loss_str,
                 }
+
+                self.log_tf(val_loss, global_step, "_validation")
 
                 saved_model = ""
                 if self.evaluator.isbetter(val_loss, self.best_loss, is_metric=False):
@@ -261,6 +308,8 @@ class BasicTrainer:
             # train_raw = self.processor.get_data(raw=True)[0]
 
         train_batches = data[0]
+        self.epoch_size = len(train_batches) * self.batch_size
+        self.total_size = self.epochs * self.epoch_size
 
         if len(data) > 1:
             val_batches = data[1]
@@ -283,10 +332,13 @@ class BasicTrainer:
         self.logger.info(
             f"Training Size: {len(train_batches) * self.batch_size} examples."
         )
+        # self.writer.add_graph(self.model)
         self.logger.info("==" * 50)
         self.logger.info(" " * 20 + "Starting of Training")
         self.logger.info("==" * 50)
-        for i in range(self.current_epoch + 1, self.current_epoch + self.epochs + 1):
+
+        # Training Epochs
+        for i in range(self.current_epoch, self.current_epoch + self.epochs + 1):
             self.model.train()  # Set model to train mode
             total_train_loss = 0
             total_train_batches = 0
@@ -301,10 +353,17 @@ class BasicTrainer:
                 tloss = self.evaluator(preds)
                 total_train_loss += tloss
                 tloss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.clip, norm_type=2
-                )
+                # gradients = U.get_gradients(self.model)
+                # self.logger.debug("Gradients AVE")
+                # self.logger.debug(gradients)
+                if self.clip:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.clip, norm_type=2
+                    )
                 self.optimizer.step()
+
+                global_step = (i * self.epoch_size) + b_num * self.batch_size
+                self.log_tf(tloss, global_step, "_train")
 
                 if b_num * self.batch_size % config["log_interval"] == 0:
                     iteration_done = datetime.datetime.now()
@@ -315,6 +374,7 @@ class BasicTrainer:
                         iter_total_time,
                         i,
                         b_num + 1,
+                        global_step,
                         total_train_loss / total_train_batches,
                     )
                     iteration_beg = datetime.datetime.now()
@@ -334,6 +394,7 @@ class BasicTrainer:
                 epoch_time,
                 i,
                 b_num + 1,
+                global_step,
                 total_train_loss,
                 prefix="END OF EPOCH | ",
             )
@@ -364,6 +425,7 @@ class BasicTrainer:
             self.logger.info("Training flag is set to true. Will train")
             _ = self.train_model()
             self.logger.info("Training completed")
+            self.writer.close()
 
         if self.config["do_predict"]:
             self.logger.info(
@@ -372,15 +434,22 @@ class BasicTrainer:
             # load model
             self.model.load()
             self.model.eval()  # Set model to train mode
+            torch.cuda.empty_cache()
             data = self.processor.get_data(raw=True)
             train = self.predict(data[0])
             self.logger.info("Prediction finished on train")
+            metrics = self.evaluator.get_metrics(train)
+            self.logger.info(f"Prediction metrics: {metrics}")
             self.processor.save_split(train, "train_prediction")
             if len(data) > 1:
                 dev = self.predict(data[1])
                 self.processor.save_split(dev, "dev_prediction")
                 self.logger.info("Prediction finished on dev")
+                metrics = self.evaluator.get_metrics(dev)
+                self.logger.info(f"Prediction metrics: {metrics}")
             if len(data) > 2:
                 test = self.predict(data[2])
                 self.processor.save_split(test, "test_prediction")
                 self.logger.info("Prediction finished on test")
+                metrics = self.evaluator.get_metrics(test)
+                self.logger.info(f"Prediction metrics: {metrics}")

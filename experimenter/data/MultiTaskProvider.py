@@ -1,6 +1,8 @@
 from typing import List, Tuple, Union
 
-from experimenter.data import DictDataProvider
+import torch
+
+from experimenter.data.base import DictDataProvider
 from experimenter.utils import pipeline
 from experimenter.utils import utils as U
 
@@ -18,10 +20,7 @@ class MultiTaskProvider(DictDataProvider):
         self.label_indx = config["processor"]["params"]["label_indx"]
         self.label_encoder = config["processor"]["params"]["label_encoder"]
         self.masks = config["processor"]["params"]["mask_weights"]
-        self.sep = config["processor"]["params"]["separator"]
-        self.num_labels = len(self.label_indx)
-        self.max_vocab_size = config["processor"]["params"]["max_vocab_size"]
-        self.min_vocab_count = config["processor"]["params"]["min_vocab_count"]
+        self.down_weight_classes = config["processor"]["params"]["down_weight_classes"]
 
         # Loaders
         self.loaders = []
@@ -35,11 +34,21 @@ class MultiTaskProvider(DictDataProvider):
             )
 
         # Text pipeline
-        text_pipe = pipeline.TextPipeline(
-            sep=self.sep,
-            max_vocab_size=self.max_vocab_size,
-            min_vocab_count=self.min_vocab_count,
-        )
+
+        _tmodule = config["encoder"]["module"]
+        _tclass = config["encoder"]["class"]
+        _tparams = config["encoder"]["params"]
+        text_pipe = U.load_class(_tmodule, _tclass, _tparams, pass_params_as_dict=True)
+
+        # self.sep = config["processor"]["params"]["separator"]
+        self.num_labels = len(self.label_indx)
+        # self.max_vocab_size = config["processor"]["params"]["max_vocab_size"]
+        # self.min_vocab_count = config["processor"]["params"]["min_vocab_count"]
+        # text_pipe = pipeline.BertTextPipeline(
+        #    sep=self.sep,
+        #    max_vocab_size=self.max_vocab_size,
+        #    min_vocab_count=self.min_vocab_count,
+        # )
         # Labels pipeline
 
         as_is = U.chainer(funcs=[lambda x, list_input: x])
@@ -94,24 +103,51 @@ class MultiTaskProvider(DictDataProvider):
 
         self.logger.info(f"Splits: {len(raw_data)}")
 
+        for i, split in enumerate(raw_data):
+            self.logger.info(f"Split {i} size: {len(split['inp'][0])}")
+
         # print(raw_data[0])
         # Process data
         s = [self.__call__(d, list_input=True) for d in raw_data]
 
-        text_pipe.enc.filter_vocab()
+        # text_pipe.enc.filter_vocab()
 
-        text_pipe.enc.freeze()
+        # text_pipe.enc.freeze()
 
         # Now encode data
         s = [self.__call__(d, list_input=True) for d in raw_data]
 
         num_classes = []
+        class_weights = []
 
-        for l_encoder in self.pipelines:
+        for i, l_encoder in enumerate(self.pipelines):
             # self.logger.info(f"Label encoder {l_encoder.enc.vocab}")
             num_classes.append(l_encoder.get_num_classes())
+            self.logger.debug(f"Class Distribution for task {i}")
+            self.logger.debug(l_encoder.get_vocab_counts(as_list=True))
+            self.logger.debug(l_encoder.get_vocab_counts(as_list=False))
+            self.logger.debug(
+                l_encoder.get_vocab_weights(
+                    as_list=False, min_w=self.down_weight_classes
+                )
+            )
+            self.logger.debug(
+                l_encoder.get_vocab_weights(
+                    as_list=True, min_w=self.down_weight_classes
+                )
+            )
+            class_weights.append(
+                l_encoder.get_vocab_weights(
+                    as_list=True, min_w=self.down_weight_classes
+                )
+            )
 
         config["processor"]["params"]["num_classes"] = num_classes
+
+        # TODO: Move this to a better place
+        class_weights = [torch.Tensor(cw).to(config["device"]) for cw in class_weights]
+        config["processor"]["params"]["class_weights"] = class_weights
+        self.logger.debug(class_weights)
         self.logger.info(f"Number of classes of output: {num_classes}")
 
         # text_pipe.enc.freeze()
@@ -131,8 +167,8 @@ class MultiTaskProvider(DictDataProvider):
         self.logger.info("First 10 vocab words:")
         self.logger.info(list(text_pipe.enc.vocab.items())[:10])
         self.logger.info("Top frequent words:")
-        self.logger.info(text_pipe.enc.wc.most_common(20))
-        config["processor"]["params"]["padding_indx"] = text_pipe.enc.get_padding_indx()
+        # self.logger.info(text_pipe.enc.wc.most_common(20))
+        config["processor"]["params"]["padding_indx"] = 0
 
     def upload_data(
         self, **kwargs
@@ -172,7 +208,6 @@ class MultiTaskProvider(DictDataProvider):
                     splits.append(data)
 
         self.logger.info(f"Data loaded.  Size: {total_loaded}")
-        self.logger.info(f"Splits loaded:: {len(splits)}")
 
         if len(splits) == 1:
             # Data loaded has a single split, check if needs to generate train/dev/text/etc.
@@ -199,12 +234,23 @@ class MultiTaskProvider(DictDataProvider):
 
         return sample_data_raw
 
-    def _get_empty(self):
+    def _get_empty(self, as_list=False):
+        """Returns an empty data record as template.
+        If as_list is set to True, the template will be a dictionary of lists.
+        Else, a single dictionary record
+        """
+
         # TODO: Expand input to list of inputs
+        if as_list:
+            return {
+                "inp": [[]],
+                "label": [[] for _ in range(self.num_labels)],
+                "mask": [[] for _ in range(self.num_labels)],
+            }
         return {
-            "inp": [[]],
-            "label": [[] for _ in range(self.num_labels)],
-            "mask": [[] for _ in range(self.num_labels)],
+            "inp": [""],
+            "label": ["" for _ in range(self.num_labels)],
+            "mask": [0 for _ in range(self.num_labels)],
         }
 
     def _as_dict(self):
@@ -215,7 +261,7 @@ class MultiTaskProvider(DictDataProvider):
         as_dict_splits = []
         for split in splits:
             # tmp = {'inp': [], 'label': [], 'mask':[]}
-            tmp = self._get_empty()
+            tmp = self._get_empty(as_list=True)
             for example_dict in split:
                 for key in example_dict.keys():
                     for i, feat in enumerate(example_dict[key]):

@@ -1,3 +1,5 @@
+import logging
+
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
@@ -9,6 +11,9 @@ if __name__ == "__main__":
     # Define hydra calling method
     @hydra.main(config_path="tmp")
     def my_app(cfg: DictConfig) -> None:
+        logger = logging.getLogger()
+        logger.setLevel(cfg.logging_level)
+
         print(OmegaConf.to_yaml(cfg))
 
         as_dict = OmegaConf.to_container(cfg, resolve=False)

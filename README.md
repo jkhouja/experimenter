@@ -8,12 +8,32 @@ cd test
 pytest -v
 ```
 
-To run locally:
+To run using yaml files (preferred way):
+```
+python run_hydra.py --config_file
+
+To run locally with json file:
 ```
 python run.py --config_file {path to json}
 ```
 
-### Azure cloud runs:
+### Run in AWS:
+1- Setup AWS CLI and make sure you're authenticated:
+```
+>aws2fa 123456
+>Done!
+```
+2- Run job:
+Make sure the experiment name contains only characters, numbers and dashes (AWS requirement)
+```
+python run_aws.py --config-path conf/file_name.yaml
+```
+To connect to tensorboard from your local machine / or notebook
+```
+F_CPP_MIN_LOG_LEVEL=3  tensorboard --logdir s3://location_of_experiment_root
+```
+
+### Run in Azure:
 
 1- setup environment variable for azure subscription id in .bash_profile by adding the following line (replace with actual subscription id)
 ```

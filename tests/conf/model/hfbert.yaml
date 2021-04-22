@@ -1,0 +1,20 @@
+
+model:
+  class: HFBert
+  module: experimenter.MultiTask.modeling
+  params:
+    dropout: 0
+    embedding_dim: 20
+    hidden_dim: 768
+    inp_seq_len:
+        eval: 1
+        value: "config['processor']['params']['seq_len']['inp']"
+    num_classes:
+        eval: 1
+        value: "config['processor']['params']['num_classes']"
+    out_seq_len:
+        eval: 1
+        value: "config['processor']['params']['seq_len']['label']"
+    vocab_size:
+        eval: 1
+        value: "config['processor']['params']['vocab_size']"

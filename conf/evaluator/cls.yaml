@@ -1,0 +1,16 @@
+evaluator:
+  class: ListEvaluator
+  module: experimenter.evaluation
+  params:
+    loss_f:
+    - class: CrossEntropyLoss
+      module: torch.nn
+      params:
+        weight: 
+          eval: 1
+          value: config["processor"]["params"]["class_weights"][0]
+        reduction: none
+    metrics_f:
+    - class: Accuracy
+      module: experimenter.evaluation
+      params: {}
