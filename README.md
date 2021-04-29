@@ -11,7 +11,7 @@ pytest -v
 To run using yaml files (preferred way):
 ```
 python run_hydra.py --config_file
-
+```
 To run locally with json file:
 ```
 python run.py --config_file {path to json}
