@@ -1,0 +1,21 @@
+
+model:
+  class: HFGpt
+  module: experimenter.models.HFGpt
+  params:
+    hidden_dim: 768
+    model_name_or_path: distilgpt2
+    initializer_range: 0.02
+    teacher_enforced: true
+    inp_seq_len:
+        eval: 1
+        value: "config['processor']['params']['seq_len']['inp']"
+    num_classes:
+        eval: 1
+        value: "config['processor']['params']['num_classes']"
+    out_seq_len:
+        eval: 1
+        value: "config['processor']['params']['seq_len']['label']"
+    vocab_size:
+        eval: 1
+        value: "config['processor']['params']['vocab_size']"

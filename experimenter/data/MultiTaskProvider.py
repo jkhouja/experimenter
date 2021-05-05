@@ -160,13 +160,15 @@ class MultiTaskProvider(DictDataProvider):
         print(self.sample_data_raw)
 
         # self.sample_data_processed = s[0][1]
-        config["processor"]["params"]["vocab_size"] = len(
-            text_pipe.enc.vocab
-        )  # Needs changing, we might have multiple vocabs
-        self.logger.info(f"Vocab size: {len(text_pipe.enc.vocab)}")
+        config["processor"]["params"]["vocab_size"] = text_pipe.get_num_classes()
+        self.logger.info(f"Vocab size: {text_pipe.get_num_classes()}")
         self.logger.info("First 10 vocab words:")
-        self.logger.info(list(text_pipe.enc.vocab.items())[:10])
-        self.logger.info("Top frequent words:")
+        try:
+            self.logger.info(list(text_pipe.enc.vocab.items())[:10])
+        except AttributeError:
+            # GPT2 has no attribute vocab.  We use get_vocab() method
+            self.logger.info(list(text_pipe.enc.get_vocab().items())[:10])
+        # self.logger.info("Top frequent words:")
         # self.logger.info(text_pipe.enc.wc.most_common(20))
         config["processor"]["params"]["padding_indx"] = 0
 
