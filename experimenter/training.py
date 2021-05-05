@@ -52,7 +52,11 @@ class BasicTrainer:
         if tb_log_dir is None:
             tb_log_dir = os.path.join(config["out_path"], "runs")
 
-        self.writer = SummaryWriter(log_dir=tb_log_dir, flush_secs=10)
+        tb_flush = 10
+        self.writer = SummaryWriter(log_dir=tb_log_dir, flush_secs=tb_flush)
+        self.logger.info(
+            f"Tensorboard data will be written every {tb_flush} seconds to {tb_log_dir}"
+        )
         config["data_path"] = os.path.join(config["root_path"], config["data_subdir"])
         self.out_path = os.path.join(
             config["out_path"], config["experiment_output_file"]

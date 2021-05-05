@@ -1,0 +1,19 @@
+defaults:
+  - processor: mantis
+  - model: hfgpt 
+  - evaluator: lm
+  - optimizer: adam
+  - aws: ft
+  - encoder: hfgpt
+root_path: /Users/jkhouja/workspace/experiments
+experiment_name: MANTIS
+model_path: model.state
+output_subdir: results
+experiment_output_file: results.json
+disable_gpu: false
+do_train: true
+do_predict: false
+epochs: 4
+log_interval: 80000
+grad_clip: 1.0
+logging_level: 20

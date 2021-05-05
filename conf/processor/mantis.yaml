@@ -1,0 +1,41 @@
+data_subdir: data
+processor:
+  class: MultiTaskProvider
+  module: experimenter.data.MultiTaskProvider
+  params:
+    loaders:
+    - class: DialogueTextFile
+      module: experimenter.loaders.DialogueText
+      params:
+        label_name: response
+        eoc_regex: "<EOC>"
+        eoc: "<EOC>"
+        limit:
+        input_paths:
+            - "mantis_processed/train.txt"
+            - "mantis_processed/dev.txt"
+            - "mantis_processed/test.txt"
+    task_order:
+    - 0
+    batch_size: 4
+    down_weight_classes: false
+    drop_last: true
+    input_path: ''
+    label_encoder:
+    - text
+    label_indx:
+      response: 0
+    mask_weights:
+    - 1
+    seq_len:
+      inp:
+      - 500
+      label:
+      - 200
+      mask:
+      - 1
+    shuffle: true
+    splits:
+    - 0.7
+    - 0.2
+    - 0.1

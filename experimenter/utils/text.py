@@ -166,12 +166,12 @@ class Encoder:
         return self.vocab
 
     def get_vocab_counts(self, as_list=False):
-        logging.info(self.vocab)
+        logging.debug(self.vocab)
         if as_list:
             res = [0] * len(self.vocab)
             for w, c in self.wc.items():
-                logging.info(w)
-                logging.info(self.vocab[w])
+                logging.debug(w)
+                logging.debug(self.vocab[w])
                 res[self.vocab[w]] = c
             return res
         return [(self.vocab.get(w, self.unk), c) for w, c in self.wc.items()]

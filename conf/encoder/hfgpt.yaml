@@ -1,0 +1,5 @@
+encoder:
+  class: GPTTextPipeline
+  module: experimenter.utils.pipeline
+  params:
+    model_name_or_path: distilgpt2
