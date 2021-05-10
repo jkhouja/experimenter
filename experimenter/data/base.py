@@ -48,6 +48,7 @@ class DataProvider(object):
         return torch.utils.data.DataLoader(
             dataset=as_data,
             batch_size=self.batch_size,
+            collate_fn=self._collate_to_len,
             drop_last=self.drop_last,
             shuffle=self.shuffle,
         )
@@ -269,6 +270,7 @@ class DictDataProvider:
         self.drop_last = self.args["drop_last"]
         self.seq_len = self.args["seq_len"]
         self.splits = self.args["splits"]
+        self.dynamic_batching = self.args.get("dynamic_batching", True)
         self.input_path = [
             os.path.join(config["data_path"], path) for path in self.args["input_path"]
         ]
@@ -299,15 +301,82 @@ class DictDataProvider:
 
                 writer.writerow(res)
 
+    @classmethod
+    def _collate_to_len(self, batch):
+        try:
+            # logging.info(batch)
+            returned = dict()
+            maxes = dict()
+
+            # Get the max lengths of the batch for each key and its features
+            for example in batch:
+                for key in example.keys():
+                    for j, feat in enumerate(example[key]):
+                        if isinstance(feat, list):
+                            try:
+                                if key in maxes:
+                                    maxes[key][j] = max(
+                                        maxes[key][j], len(example[key][j])
+                                    )
+                                else:
+                                    maxes[key] = [len(example[key][j])]
+                            except IndexError:
+                                maxes[key].append(len(example[key][j]))
+                        elif isinstance(feat, int):
+                            # tmp = torch.LongTensor([batch[i][key][j] for i in range(len(batch))])
+                            try:
+                                if key in maxes:
+                                    maxes[key][j] = 1
+                                else:
+                                    maxes[key] = [1]
+                            except IndexError:
+                                maxes[key].append(1)
+
+            # logging.info(maxes)
+            # Create tensors with max_len
+            for key in maxes.keys():
+                returned[key] = []
+                for j, leng in enumerate(maxes[key]):
+                    # logging.debug(feat)
+                    if isinstance(leng, int) and leng > 1:
+
+                        tmp = torch.zeros(len(batch), maxes[key][j]).long()
+                        for i in range(len(batch)):
+                            tmp[i, : len(batch[i][key][j])] = torch.LongTensor(
+                                batch[i][key][j]
+                            )
+
+                        returned[key].append(tmp)
+                    else:
+                        tmp = torch.LongTensor(
+                            [batch[i][key][j] for i in range(len(batch))]
+                        )
+                        # tmp = torch.LongTensor([1 for i in range(len(batch))])
+                        returned[key].append(tmp)
+
+            # logging.info(returned)
+            return returned
+        except NameError:
+            self.logger.error("Error collating at requested index: {}".format(batch))
+
     def _to_batches(self, data: list):
         """Creates pytorch batches from (processed) data"""
         as_data = DictDataset(data, lims=self.seq_len)
-        return torch.utils.data.DataLoader(
-            dataset=as_data,
-            batch_size=self.batch_size,
-            drop_last=self.drop_last,
-            shuffle=self.shuffle,
-        )
+        if self.dynamic_batching:
+            return torch.utils.data.DataLoader(
+                dataset=as_data,
+                batch_size=self.batch_size,
+                collate_fn=self._collate_to_len,
+                drop_last=self.drop_last,
+                shuffle=self.shuffle,
+            )
+        else:
+            return torch.utils.data.DataLoader(
+                dataset=as_data,
+                batch_size=self.batch_size,
+                drop_last=self.drop_last,
+                shuffle=self.shuffle,
+            )
 
     # Inefficient, needs to reimplement
     def _from_batch_old(self, minibatch: dict):
@@ -657,13 +726,13 @@ class DictDataset(torch.utils.data.Dataset):
                 for j, feat in enumerate(self.data[key]):
                     # logging.debug(feat)
                     if isinstance(feat[idx], list):
-                        tmp = np.zeros((self.lims[key][j]), dtype=int)
-                        tmp[: min(self.lims[key][j], len(feat[idx]))] = feat[idx][
-                            : min(self.lims[key][j], len(feat[idx]))
-                        ]
-                        returned[key].append(tmp)
+                        # tmp = np.zeros((self.lims[key][j]), dtype=int)
+                        # tmp[: min(self.lims[key][j], len(feat[idx]))] = feat[idx][
+                        #    : min(self.lims[key][j], len(feat[idx]))
+                        # ]
+                        returned[key].append(feat[idx][: self.lims[key][j]])
                     else:
-                        returned[key].append(np.asarray(feat[idx]))
+                        returned[key].append(feat[idx])
 
             return returned
         except NameError:
