@@ -1,10 +1,91 @@
 import logging
 import os
 import random
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
+from torch.utils.data.dataset import Dataset
+from torch.utils.data.sampler import Sampler
+
+
+def get_length_grouped_indices(
+    lengths, batch_size, mega_batch_mult=None, generator=None, perfect_sort=False
+):
+    # Default for mega_batch_mult: 50 or the number to get 4 megabatches, whichever is smaller.
+    if mega_batch_mult is None:
+        mega_batch_mult = min(len(lengths) // (batch_size * 4), 50)
+        # Just in case, for tiny datasets
+        if mega_batch_mult == 0:
+            mega_batch_mult = 1
+        mega_batch_mult = 1
+
+    indices = torch.randperm(len(lengths))
+
+    if perfect_sort:
+        megabatches = [
+            list(sorted(indices.tolist(), key=lambda i: lengths[i], reverse=True))
+        ]
+    else:
+        megabatch_size = mega_batch_mult * batch_size
+        megabatches = [
+            indices[i : i + megabatch_size].tolist()  # noqa
+            for i in range(0, len(lengths), megabatch_size)
+        ]
+        megabatches = [
+            list(sorted(megabatch, key=lambda i: lengths[i], reverse=True))
+            for megabatch in megabatches
+        ]
+
+    # The rest is to get the biggest batch first.
+    # Since each megabatch is sorted by descending length, the longest element is the first
+    megabatch_maximums = [lengths[megabatch[0]] for megabatch in megabatches]
+    max_idx = torch.argmax(torch.tensor(megabatch_maximums)).item()
+    # Switch to put the longest element in first position
+    megabatches[0][0], megabatches[max_idx][0] = (
+        megabatches[max_idx][0],
+        megabatches[0][0],
+    )
+
+    return sum(megabatches, [])
+
+
+class LengthGroupedSampler(Sampler):
+    r"""
+    Sampler that samples indices in a
+    way that groups together features of the dataset of roughly the same length while
+    keeping a bit of randomness.
+    """
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        batch_size: int,
+        lengths: Optional[List[int]] = None,
+        input_key: Optional[str] = None,
+        generator=None,
+        perfect_sort=False,
+    ):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.input_key = input_key if input_key is not None else "inp"
+        if lengths is None:
+            lengths = [len(example[self.input_key][0]) for example in dataset]
+        self.lengths = lengths
+        self.generator = generator
+        self.perfect_sort = perfect_sort
+
+    def __len__(self):
+        return len(self.lengths)
+
+    def __iter__(self):
+        indices = get_length_grouped_indices(
+            self.lengths,
+            self.batch_size,
+            generator=self.generator,
+            perfect_sort=self.perfect_sort,
+        )
+        return iter(indices)
 
 
 class DataProvider(object):
@@ -366,6 +447,7 @@ class DictDataProvider:
             return torch.utils.data.DataLoader(
                 dataset=as_data,
                 batch_size=self.batch_size,
+                sampler=LengthGroupedSampler,
                 collate_fn=self._collate_to_len,
                 drop_last=self.drop_last,
                 shuffle=self.shuffle,
