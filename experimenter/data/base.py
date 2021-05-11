@@ -450,7 +450,6 @@ class DictDataProvider:
                 sampler=LengthGroupedSampler,
                 collate_fn=self._collate_to_len,
                 drop_last=self.drop_last,
-                shuffle=self.shuffle,
             )
         else:
             return torch.utils.data.DataLoader(
