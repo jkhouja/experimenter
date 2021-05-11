@@ -5,8 +5,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data.dataset import Dataset
-from torch.utils.data.sampler import Sampler
+from torch.utils.data import Dataset, Sampler
 
 
 def get_length_grouped_indices(
@@ -443,11 +442,12 @@ class DictDataProvider:
     def _to_batches(self, data: list):
         """Creates pytorch batches from (processed) data"""
         as_data = DictDataset(data, lims=self.seq_len)
+        sampler = LengthGroupedSampler(as_data, self.batch_size, perfect_sort=False)
         if self.dynamic_batching:
             return torch.utils.data.DataLoader(
                 dataset=as_data,
                 batch_size=self.batch_size,
-                sampler=LengthGroupedSampler,
+                sampler=sampler,
                 collate_fn=self._collate_to_len,
                 drop_last=self.drop_last,
             )
