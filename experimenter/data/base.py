@@ -381,7 +381,6 @@ class DictDataProvider:
 
                 writer.writerow(res)
 
-    @classmethod
     def _collate_to_len(self, batch):
         try:
             # logging.info(batch)
@@ -441,22 +440,26 @@ class DictDataProvider:
 
     def _to_batches(self, data: list):
         """Creates pytorch batches from (processed) data"""
-        as_data = DictDataset(data, lims=self.seq_len)
-        sampler = LengthGroupedSampler(as_data, self.batch_size, perfect_sort=False)
+        
         if self.dynamic_batching:
+            as_data = DictDataset(data, lims=self.seq_len)
+            sampler = LengthGroupedSampler(as_data, self.batch_size, perfect_sort=False)
             return torch.utils.data.DataLoader(
                 dataset=as_data,
                 batch_size=self.batch_size,
                 sampler=sampler,
                 collate_fn=self._collate_to_len,
                 drop_last=self.drop_last,
+                pin_memory=True,
             )
         else:
+            as_data = DictDatasetWithPadding(data, lims=self.seq_len)
             return torch.utils.data.DataLoader(
                 dataset=as_data,
                 batch_size=self.batch_size,
                 drop_last=self.drop_last,
                 shuffle=self.shuffle,
+                pin_memory=True,
             )
 
     # Inefficient, needs to reimplement
@@ -814,6 +817,55 @@ class DictDataset(torch.utils.data.Dataset):
                         returned[key].append(feat[idx][: self.lims[key][j]])
                     else:
                         returned[key].append(feat[idx])
+
+            return returned
+        except NameError:
+            self.logger.error("Error at requested index: {}".format(idx))
+
+    def __len__(self):
+        return self.len
+
+    
+class DictDatasetWithPadding(torch.utils.data.Dataset):
+    """Implementing data wrapper on a dictionary type dataset"""
+
+    def __init__(self, data_as_dict: List[dict], lims: dict, indicies_subset=None):
+        """Takes dictionary of numpy / tensors
+        Args:
+            data_as_dict:  List od data items, each is a dictionary that can hold int or list of int
+            lims: dictionary matching the keys in data with the sequence length of each key
+        """
+        assert isinstance(data_as_dict, dict)
+        self.keys = list(data_as_dict.keys())
+        data_len = len(data_as_dict[self.keys[0]][0])
+        self.data = data_as_dict
+        self.lims = lims
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+        if indicies_subset:
+            logging.info("Indicies passed to data_wrapper and will be used")
+            self.index = indicies_subset
+
+        else:
+            self.index = range(data_len)
+
+        self.len = len(self.index)
+
+    def __getitem__(self, idx):
+        try:
+            returned = dict()
+            for key in self.keys:
+                returned[key] = []
+                for j, feat in enumerate(self.data[key]):
+                    # logging.debug(feat)
+                    if isinstance(feat[idx], list):
+                        tmp = np.zeros((self.lims[key][j]), dtype=int)
+                        tmp[: min(self.lims[key][j], len(feat[idx]))] = feat[idx][
+                            : min(self.lims[key][j], len(feat[idx]))
+                        ]
+                        returned[key].append(tmp)
+                    else:
+                        returned[key].append(np.asarray(feat[idx]))
 
             return returned
         except NameError:
