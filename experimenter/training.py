@@ -351,6 +351,7 @@ class BasicTrainer:
             total_train_loss = 0
             total_train_batches = 0
             processed_examples = 0
+            avg_processed_examples = []
             # current_epoch = i  # needed to track evaluation?
             start = datetime.datetime.now()
             iteration_beg = datetime.datetime.now()
@@ -375,7 +376,7 @@ class BasicTrainer:
                 self.log_tf(tloss, global_step, "_train")
                 processed_examples += self.batch_size
 
-                if b_num * self.batch_size % config["log_interval"] == 0:
+                if b_num > 0 and b_num * self.batch_size % config["log_interval"] == 0:
                     iteration_done = datetime.datetime.now()
                     iter_total_time = (iteration_done - iteration_beg).total_seconds()
                     self.model.eval()
@@ -390,6 +391,7 @@ class BasicTrainer:
                     )
                     iteration_beg = datetime.datetime.now()
                     self.model.train()  # Set model to train mode
+                    avg_processed_examples.append(processed_examples)
                     processed_examples = 0
 
             done = datetime.datetime.now()
@@ -401,6 +403,7 @@ class BasicTrainer:
             total_train_loss /= total_train_batches
             self.logger.info("-" * 50)
             self.model.eval()
+            avg_processed_examples.append(processed_examples)
             log(
                 done.strftime("%m-%d %H:%M"),
                 epoch_time,
@@ -408,6 +411,7 @@ class BasicTrainer:
                 b_num + 1,
                 global_step,
                 total_train_loss,
+                sum(avg_processed_examples),
                 prefix="END OF EPOCH | ",
             )
             self.logger.info("-" * 50)
