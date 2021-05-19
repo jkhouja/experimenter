@@ -41,7 +41,7 @@ class DialogueTextFile:
             else:
                 match = match[0]
                 res.append(
-                    [match[0].strip() + " " + self.eoc, {"response": match[1].strip()}]
+                    [match[0].strip() + " " + self.eoc, {self.label_name: match[1].strip()}]
                 )
         print("Loading data from disk finished")
         return res
