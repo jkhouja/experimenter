@@ -145,7 +145,7 @@ class ListEvaluator:
 
                     num_items = (
                         (data["label"][k] > 0)
-                        .type(torch.DoubleTensor)
+                        .type(torch.LongTensor)
                         .to(self.device)
                         .sum(dim=1)
                     )  # Override num_items to be actual tokens TODO: replace 0 with ignore index
@@ -164,7 +164,7 @@ class ListEvaluator:
                     tmp_loss = tmp_loss * data["mask"][k]
 
                     num_items = (
-                        torch.tensor(1).type(torch.DoubleTensor).to(self.device)
+                        torch.tensor(1).type(torch.LongTensor).to(self.device)
                     )  # Assume each example is 1. will be broadcasted across batch_size
                     self.logger.debug(
                         f"Number of tokens in all sequences in batch: {num_items}"
@@ -247,7 +247,7 @@ class ListEvaluator:
 
                 num_items = (
                     (data["label"][k] > 0)
-                    .type(torch.DoubleTensor)
+                    .type(torch.LongTensor)
                     .to(self.device)
                     .sum(dim=1)
                 )  # Override num_items to be actual tokens TODO: replace 0 with ignore index
@@ -265,7 +265,7 @@ class ListEvaluator:
                 tmp_loss = tmp_loss * data["mask"][k]
 
                 num_items = (
-                    torch.tensor(1).type(torch.DoubleTensor).to(self.device)
+                    torch.tensor(1).type(torch.LongTensor).to(self.device)
                 )  # Assume each example is 1. will be broadcasted across batch_size
                 self.logger.debug(
                     f"Number of tokens in all sequences in batch: {num_items}"
@@ -302,7 +302,7 @@ class ListEvaluator:
                 )  # sum over the sequence length resulting in [batch_num,]
                 if aggregate == "mean":
                     num_items = (
-                        (data["label"][k] > 0).type(torch.DoubleTensor).sum(dim=1)
+                        (data["label"][k] > 0).type(torch.LongTensor).sum(dim=1)
                     )
                     tmp_loss = tmp_loss * num_items
                 self.logger.debug(f"Evaluator tmp loss {k} after summation: {tmp_loss}")
