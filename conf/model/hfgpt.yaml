@@ -6,7 +6,7 @@ model:
     hidden_dim: 768
     model_name_or_path: distilgpt2
     initializer_range: 0.02
-    teacher_enforced: true
+    lm_mode: true
     inp_seq_len:
         eval: 1
         value: "config['processor']['params']['seq_len']['inp']"
