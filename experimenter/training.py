@@ -208,7 +208,7 @@ class BasicTrainer:
                 self.logger.info(
                     prefix
                     + "Epoch: {}: {}/{} Train duration(s): {:.1f}\
-                            \t Train loss (~avg over batches): {:.4f} | {:.1f) Ex. per sec".format(
+                            \t Train loss (~avg over batches): {:.4f} | {:.1f} Ex. per sec".format(
                         epoch,
                         iteration * self.batch_size,
                         len(train_batches) * self.batch_size,
