@@ -21,7 +21,7 @@ class HFGpt(BaseModel):
         self.num_classes = config["processor"]["params"]["num_classes"]
         self.num_outputs = len(self.num_classes)
 
-        self.teacher_enforced = args["teacher_enforced"]
+        self.lm_mode = args["lm_mode"]
         self.in_seq_len = args["inp_seq_len"]
         self.out_seq_len = args["out_seq_len"]
         self.vocab_size = args["vocab_size"]
@@ -31,12 +31,17 @@ class HFGpt(BaseModel):
 
         # Shared for all input
         self.encoder_decoder = GPT2Model.from_pretrained(self.model_name_or_path)
+        #self.encoder_decoder.config.is_encoder_decoder=True
+        #self.logger.info(self.encoder_decoder.config)
 
         # For each output
         self.out_decoder = torch.nn.ModuleList()
 
         for i in range(self.num_outputs):
-            clss = torch.nn.Linear(self.hidden_dim, self.num_classes[i])
+            clss = torch.nn.Linear(self.hidden_dim, self.num_classes[i], bias=False)
+            # Weight tying for sequence prediction following HF implementation
+            if self.encoders[i] == "text":
+                clss.weight = self.encoder_decoder.get_input_embeddings().weight
             # Common init way in most sota models
             clss.weight.data.normal_(mean=0.0, std=self.initializer_range)
             self.out_decoder.append(clss)
@@ -48,15 +53,10 @@ class HFGpt(BaseModel):
         # Inputs are the the first sequence in input.  We take all tokens except the last one
         # which will be used as a first token in decoder
         # inps shape: (batch_size, input_seq_len -1)
-        inps = input_batch["inp"][0][:, :-1]
-
-        # Encode using HuggingFace BERT
+        inps = input_batch["inp"][0].contiguous()
         outputs = self.encoder_decoder(input_ids=inps, use_cache=True)
-
-        # outputs = self.bert_encoder(input_ids=inps)
         last_hidden_state = outputs.last_hidden_state
         past_key_values = outputs.past_key_values
-
         self.logger.debug(f"shape of last hidden: {last_hidden_state.shape}")
 
         # First version. class output only
@@ -65,35 +65,30 @@ class HFGpt(BaseModel):
         # TODO: Not working LM part
         for i in range(self.num_outputs):
             logging.debug(f"Shape of output layer for output number: {i}")
-            # We will always use last tokens from input as the first decoder tokens
-            last_input_tokens = input_batch["inp"][0][:, -1]
 
-            # Expand to dimension (batch_size, 1)
-            last_input_tokens = torch.unsqueeze(last_input_tokens, 1)
 
             if self.encoders[i] == "text":
-                if self.teacher_enforced:
-                    # seq prediction task. Output for output_seq_len starting from last state
-                    teacher_labels = torch.cat(
-                        (last_input_tokens, input_batch["label"][i][:, :-1]), dim=1
-                    )
-                    outputs = self.encoder_decoder(
-                        teacher_labels, past_key_values=past_key_values
-                    )
+                # We will always use last tokens from input as the first decoder tokens
+                #last_input_tokens = input_batch["inp"][0][:, -1]
+                # Expand to dimension (batch_size, 1)
+                #last_input_tokens = torch.unsqueeze(last_input_tokens, 1)
+                if self.lm_mode:
                     lm_prediction = self.out_decoder[i](outputs.last_hidden_state)
-                    # assert teacher_labels.shape == inp_text.shape
-                    # lm_prediction = self.out_decoder[i](last_hidden_state)
                     lm_prediction = lm_prediction.permute(
                         0, 2, 1
-                    )  # batch x vocab x seq
-                    # lm_prediction = self.sm(lm_prediction)
+                    ).contiguous()  # batch x vocab x seq
                 else:
-
+                    raise NotImplementedError("Seq2seq version is not implemented")
                     lm_predictions = []
                     # Use last input token as the first decoder token
-                    previ_token = last_input_tokens
-                    # Predict step by step using model's output at each timestep
-                    for k in range(input_batch["label"][i].shape[1]):
+                    out_probs = self.out_decoder[i](torch.unsqueeze(last_hidden_state[:,-1,:], 1))
+                    out_probs = out_probs.permute(0, 2, 1)  # batch x vocab x seq
+                    lm_predictions.append(out_probs)
+
+
+                    # Predict label step by step
+                    for k in range(input_batch["label"][i].shape[1]-1):
+                        previ_token = torch.unsqueeze(input_batch["label"][i][:,k], 1)
                         # Run one pass
                         outputs = self.encoder_decoder(
                             input_ids=previ_token,
@@ -105,7 +100,6 @@ class HFGpt(BaseModel):
                         past_key_values = outputs.past_key_values
                         out_probs = self.out_decoder[i](outputs.last_hidden_state)
                         out_probs = out_probs.permute(0, 2, 1)  # batch x vocab x seq
-                        previ_token = out_probs.argmax(dim=1, keepdim=False)
 
                         # add words probabilities to predictions
                         lm_predictions.append(out_probs)
@@ -116,14 +110,17 @@ class HFGpt(BaseModel):
                 output.append(lm_prediction)
 
             elif self.encoders[i] == "class":
+                #raise NotImplementedError("Class version needs to do another pass on last token of input")
                 self.logger.debug(f"Device of last_state: {last_hidden_state.device}")
                 # A single class prediction, we take the cls token but should pass that
                 cls_output = self.out_decoder[i](
                     last_hidden_state[:, 0, :].squeeze()
-                ).squeeze()
+                )
                 # cls_output = self.sm(cls_output)
-                # logging.info(cls_output.shape)
+                logging.debug(cls_output.shape)
                 output.append(cls_output)
+            else:
+                raise NotImplementedError("Labels can be either class or text")
 
         res = []
         try:
