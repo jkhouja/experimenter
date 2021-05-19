@@ -39,14 +39,15 @@ class LMTextFile:
                                 self.seq_len is not None
                                 and word_in_line == self.seq_len - 1
                             ):
-                                # We reached the end of sequence, add to output and restart
-                                tmp = (
-                                    [self.beg_sym + " ".join(sent)],
-                                    {self.label_name: " ".join(sent) + self.end_sym},
-                                )
-                                data.append(tmp)
-                                sent = []
-                                word_in_line = 0
+                                break
+                        # We reached the end of sequence, add to output and restart
+                        tmp = (
+                            self.beg_sym + " ".join(sent),
+                            {self.label_name: " ".join(sent) + self.end_sym}
+                        )
+                        data.append(tmp)
+                        sent = []
+                        word_in_line = 0
 
                 out.append(data)
 
